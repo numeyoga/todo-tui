@@ -2,8 +2,9 @@
 
 `todo` est un gestionnaire de tâches en ligne de commande au format
 [todo.txt](http://todotxt.org/), compatible avec `todo.sh` et doté
-d'extensions modernes (`due:`, `recur:`, `t:`), de sorties JSON et
-d'emplacements de fichiers conformes XDG.
+d'extensions modernes (`due:`, `recur:`, `t:`), de sorties JSON, d'une
+interface interactive plein écran (`--tui`) et d'emplacements de
+fichiers conformes XDG.
 
 ---
 
@@ -62,6 +63,9 @@ todo agenda
 
 # Archiver les tâches faites vers done.txt
 todo archive
+
+# Interface interactive plein écran (section 6)
+todo --tui
 ```
 
 ---
@@ -93,7 +97,7 @@ Règles essentielles :
 - **`+projet`**, **`@contexte`** : un mot commençant par `+` ou `@`,
   n'importe où dans la description.
 - **`cle:valeur`** : tags libres ; `due:`, `recur:` et `t:` ont un
-  comportement spécial (section 6).
+  comportement spécial (section 7).
 
 Le fichier est un texte brut : vous pouvez l'éditer à la main ou avec
 `todo edit`. Les lignes vides sont ignorées.
@@ -210,7 +214,101 @@ THIS WEEK:
 
 ---
 
-## 6. Extensions : `due:`, `recur:`, `t:`
+## 6. L'interface interactive (`--tui`)
+
+`todo --tui` lance une interface plein écran dans le terminal. C'est un
+**mode autonome**, pas une commande : il n'accepte aucun argument de
+commande — `todo --tui ls` est une erreur d'usage
+(`usage: --tui takes no command`). Les fichiers sont résolus comme
+d'habitude (`-f`, `-d`, variables d'environnement, config) ; si
+`todo.txt` est illisible, l'erreur s'affiche avant le lancement de
+l'interface. Les flags `--plain` et `--json` sont acceptés mais sans
+effet dans le TUI.
+
+### Disposition
+
+Trois panneaux, plus une ligne de statut en bas :
+
+- **Barre latérale** (gauche) : « Toutes » avec les compteurs
+  ouvertes/total, puis les `+projets` et `@contextes` avec leur nombre
+  d'occurrences, puis les vues **Agenda** et **Done**.
+- **Liste** (centre) : les tâches au format `N: ligne brute`, avec les
+  mêmes couleurs que `ls` (priorités `(A)`/`(B)`/`(C)`, tâches faites
+  estompées).
+- **Détail** (droite) : la ligne brute de la tâche sélectionnée, puis
+  ses champs — ligne, priorité, dates de création et de complétion,
+  `due:`, `t:`, `recur:`, projets, contextes.
+- **Ligne de statut** : vue courante, filtres actifs
+  (`filter: +projet @contexte`), messages d'action (`3: done`,
+  `rechargé (fichier modifié)`…) et rappel des touches. C'est aussi là
+  que s'ouvrent les saisies de texte.
+
+### Les trois vues
+
+| Vue | Contenu |
+|---|---|
+| **Todo** (défaut) | Tâches visibles de `todo.txt` — même tri que `ls` (priorité puis ligne), `t:` futurs masqués, filtres ET appliqués. |
+| **Agenda** | Les 14 prochains jours groupés par `due:`, puis une section `THRESHOLDS:` pour les `t:` à venir. |
+| **Done** | Le contenu de `done.txt`, lignes les plus récentes en premier. |
+
+On change de vue via la barre latérale : `Tab` (ou `h`) pour lui donner
+le focus, `j`/`k` pour s'y déplacer, `Entrée` pour appliquer — le focus
+revient ensuite à la liste. Appliquer un projet ou un contexte
+**bascule** le terme correspondant dans les filtres actifs (plusieurs
+filtres se combinent en ET, comme les termes de `ls`) ; « Toutes »
+réinitialise les filtres et ramène à la vue Todo. Le filtre `/` et les
+filtres de la barre latérale ne s'appliquent qu'à la vue Todo.
+
+### Raccourcis clavier
+
+| Touche | Action |
+|---|---|
+| `j`/`k` ou `↓`/`↑` | Déplacer la sélection (liste ou barre latérale selon le focus) |
+| `Tab` | Basculer le focus barre latérale ↔ liste ; `h` et `l` y vont directement |
+| `Entrée` | Appliquer l'entrée de la barre latérale (filtre ou vue) |
+| `Échap` | Effacer les filtres ; dans une saisie ou un dialogue, annuler |
+| `x` ou `Espace` | Faire/défaire la tâche — en vue Done, la **rouvre** (décomplétée en fin de `todo.txt`) |
+| `a` | Ajouter une tâche (saisie en ligne de statut, date de création = aujourd'hui) |
+| `e` | Éditer la ligne brute de la tâche sélectionnée |
+| `A` / `P` | Append / prepend du texte sur la tâche |
+| `p` | Priorité : liste de choix `A`–`Z` ou « (aucune) » |
+| `d` | Supprimer la tâche (dialogue de confirmation) |
+| `m` | Déplacer la tâche entre `todo.txt` et `done.txt` (vues Todo et Done) |
+| `R` | Archiver les tâches faites vers `done.txt` (confirmation) |
+| `/` | Filtrer : termes séparés par des espaces, combinés en ET ; saisie vide = tout effacer |
+| `E` | Quitter le TUI, ouvrir `todo.txt` dans `$EDITOR`, relancer le TUI |
+| `r` | Recharger les fichiers immédiatement |
+| `?` | Aide en ligne |
+| `q` | Quitter |
+
+Les touches `a`, `e`, `A`, `P` et `/` ouvrent une saisie dans la ligne
+de statut — `Entrée` valide, `Échap` annule, un texte vide ne fait
+rien (sauf `/` qui efface les filtres). Les touches `p`, `d`, `R` et
+`?` ouvrent des boîtes de dialogue modales. Les mutations sont
+identiques au CLI : `x` sur une tâche `recur:` ajoute l'occurrence
+suivante en fin de fichier, `d` supprime la ligne physique, `m` fait la
+paire append + suppression entre les deux fichiers. En vue **Done**,
+`e`/`A`/`P`/`d`/`p`/`m` s'appliquent aux lignes de `done.txt` — les
+numéros `N:` y sont ceux de `done.txt`, pas de `todo.txt`.
+
+### Rechargement automatique et `$EDITOR`
+
+Le TUI surveille les dates de modification (`mtime`) de `todo.txt` et
+`done.txt` et recharge automatiquement ~2 s après une modification
+externe — la ligne de statut affiche `rechargé (fichier modifié)`.
+Limite connue : la détection repose **uniquement** sur le mtime ; une
+écriture qui conserve le mtime passe inaperçue. `r` force alors le
+rechargement.
+
+`E` quitte le TUI, ouvre `todo.txt` dans `$EDITOR`, puis relance le TUI
+à la fermeture de l'éditeur — pratique pour les retouches en vrac que
+`e` ne couvre pas. Si `$EDITOR` n'est pas défini, si l'exécutable est
+introuvable ou s'il échoue, l'erreur s'affiche sur stderr et le TUI ne
+redémarre pas.
+
+---
+
+## 7. Extensions : `due:`, `recur:`, `t:`
 
 ### `due:AAAA-MM-JJ` — échéance
 
@@ -250,7 +348,7 @@ Une valeur `recur:` malformée produit une erreur sans toucher au fichier.
 
 ---
 
-## 7. Fichiers et configuration
+## 8. Fichiers et configuration
 
 ### Emplacements par défaut (XDG)
 
@@ -301,14 +399,15 @@ valeur) ou `TERM=dumb`/non défini.
 
 ---
 
-## 8. Flags globaux
+## 9. Flags globaux
 
 | Flag | Effet |
 |---|---|
 | `-f`, `--file PATH` | Fichier `todo.txt` à utiliser |
 | `-d`, `--done-file PATH` | Fichier `done.txt` à utiliser |
 | `--plain` | Pas de couleurs |
-| `--json` | Sortie JSON (voir §9) |
+| `--json` | Sortie JSON (voir §10) |
+| `--tui` | Interface interactive — aucune commande acceptée (voir §6) |
 | `-h`, `--help` | Aide |
 | `--version` | Version |
 | `--` | Fin des options — le reste est du texte de tâche |
@@ -324,7 +423,7 @@ todo add -- "texte commençant par --json"
 
 ---
 
-## 9. Sortie JSON et scripting
+## 10. Sortie JSON et scripting
 
 `--json` est accepté par `ls`, `listall`, `due`, `agenda`, `listproj`
 et `listcon`. (`listpri` reste en texte.) La sortie est indentée ;
@@ -365,7 +464,7 @@ todo listproj --json | jq -r '.[]'
 
 ---
 
-## 10. Codes de sortie et erreurs
+## 11. Codes de sortie et erreurs
 
 | Code | Signification |
 |---|---|
@@ -383,7 +482,7 @@ fi
 
 ---
 
-## 11. Astuces et limites connues
+## 12. Astuces et limites connues
 
 - **Références stables** : les numéros sont les lignes du fichier ;
   après `del`/`archive`, relancez `ls` avant d'agir.

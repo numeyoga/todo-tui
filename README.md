@@ -3,7 +3,8 @@
 A command-line [todo.txt](http://todotxt.org/) manager written in Elixir,
 distributed as a single `todo` escript. Feature parity with `todo.sh`
 plus the modern `due:`, `recur:` and `t:` extensions, XDG file
-locations, colored output and a `--json` mode for scripting.
+locations, colored output, a `--json` mode for scripting and an
+interactive full-screen TUI (`--tui`).
 
 ## Build & install
 
@@ -23,7 +24,7 @@ Full user documentation (in French): [docs/GUIDE.md](docs/GUIDE.md).
 ## Usage
 
 ```
-todo [--file PATH] [--done-file PATH] [--plain] [--json] COMMAND [ARGS...]
+todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS...]
 ```
 
 ### Adding & editing
@@ -77,12 +78,59 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] COMMAND [ARGS...]
 | `-d`, `--done-file PATH` | Use PATH as `done.txt` |
 | `--plain` | Disable ANSI colors |
 | `--json` | Emit JSON on `ls`, `listall`, `due`, `agenda`, `listproj`, `listcon` |
+| `--tui` | Launch the interactive TUI — takes no command |
 | `-h` | Help |
 
 Task lines are printed as `N: <raw line>` where `N` is the **file line
 number** — stable under filtering, and what `do`/`del`/`pri`/… take as
 argument. Done tasks are dimmed; `(A)`/`(B)`/`(C)` priorities are
 colored red/yellow/cyan.
+
+## TUI
+
+`todo --tui` opens a full-screen interactive UI. It is a mode, not a
+command — `todo --tui ls` is a usage error. `-f`/`-d` and the usual
+file resolution apply; an unreadable `todo.txt` fails before the UI
+starts. (`--plain` and `--json` are accepted but have no effect inside
+the TUI.)
+
+Three panes plus a statusline:
+
+- **Sidebar**: `Toutes` (open/total counts), `+projects` and
+  `@contexts` with frequencies, and the **Agenda** / **Done** views.
+- **List**: tasks as `N: raw line`, same colors as `ls`.
+- **Detail**: the selected task's fields (dates, `due:`, `t:`,
+  `recur:`, projects, contexts).
+- **Statusline**: current view, active filters, action feedback, key
+  hints.
+
+Views: **Todo** (default — `ls` semantics: priority sort, future `t:`
+hidden, AND filters), **Agenda** (next 14 days by `due:` plus upcoming
+`t:` thresholds) and **Done** (`done.txt`, latest lines first). Sidebar
+`Enter` toggles a project/context filter or switches view; `Toutes`
+resets filters and returns to Todo.
+
+| Key | Action |
+|---|---|
+| `j`/`k`, `↓`/`↑` | Move selection |
+| `Tab`, `h`, `l` | Focus sidebar ↔ list |
+| `Enter` | Apply the sidebar entry (filter / view) |
+| `Esc` | Clear filters; cancel a dialog |
+| `x` / `Space` | Toggle done — in the Done view, reopens into `todo.txt` |
+| `a`, `e`, `A`, `P` | Add / edit raw line / append / prepend (statusline prompt) |
+| `p` | Priority picker (`A`–`Z` or none) |
+| `d` | Delete task (confirmation) |
+| `m` | Move task between `todo.txt` and `done.txt` |
+| `R` | Archive done tasks (confirmation) |
+| `/` | Filter: space-separated AND terms, empty input clears |
+| `E` | Quit, edit `todo.txt` in `$EDITOR`, relaunch the TUI |
+| `r` | Reload the files now |
+| `?`, `q` | Help, quit |
+
+Both files are watched by mtime and auto-reloaded ~2 s after an
+external change (`rechargé (fichier modifié)` in the statusline).
+Detection is mtime-only: an edit that preserves the mtime is missed —
+press `r` to force a reload.
 
 ## File locations
 
