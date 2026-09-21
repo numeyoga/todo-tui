@@ -3,8 +3,9 @@ defmodule TodoTxt.Tui do
   use TermUI.Elm
 
   alias TodoTxt.{Ops, Task}
-  alias TodoTxt.Tui.{Keys, State}
+  alias TodoTxt.Tui.{Keys, Modal, State}
   alias TermUI.{Command, Event}
+  alias TermUI.Widgets.TextInput
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do
@@ -156,26 +157,97 @@ defmodule TodoTxt.Tui do
 
   def update(:reload, s), do: {reload(s), []}
 
-  # Scaffold de modal (Task 7 ajoute les vrais widgets) : map simple
-  # %{action:, line:} — pas de widget/widget_mod.
   def update({:open_modal, action}, s) do
-    if modal_needs_task?(action) and is_nil(State.selected_task(s)) do
+    needs_task = action in [:edit, :append, :prepend, :del, :pri]
+
+    if needs_task and is_nil(State.selected_task(s)) do
       {s, []}
     else
-      line =
-        case State.selected_task(s) do
-          nil -> nil
-          t -> t.line
-        end
-
-      {%{s | mode: :input, modal: %{action: action, line: line}}, []}
+      {%{s | mode: :input, modal: Modal.open(action, s)}, []}
     end
   end
 
-  def update({:dialog_result, r}, %{modal: %{action: :del, line: line}} = s)
+  def update({:modal_event, %Event.Key{key: :escape}}, s), do: update(:modal_cancel, s)
+
+  def update(
+        {:modal_event, %Event.Key{key: :enter}},
+        %{modal: %{widget_mod: TextInput}} = s
+      ),
+      do: update(:modal_submit, s)
+
+  def update({:modal_event, ev}, %{modal: %{widget: w, widget_mod: mod}} = s) do
+    case mod.handle_event(normalize_key(ev), w) do
+      {:ok, w2} ->
+        {%{s | modal: %{s.modal | widget: w2}}, []}
+
+      {:ok, w2, effects} ->
+        # Widget self-messages (PickList {:select, item} / :cancel) go back
+        # through the root's handle_info -> update.
+        Enum.each(effects || [], fn {:send, pid, msg} -> send(pid, msg) end)
+        {%{s | modal: %{s.modal | widget: w2}}, []}
+    end
+  end
+
+  def update(:modal_cancel, s), do: {%{s | mode: :normal, modal: nil}, []}
+
+  def update(:modal_submit, %{modal: %{widget_mod: TextInput} = modal} = s) do
+    s = %{s | mode: :normal, modal: nil}
+    text = TextInput.get_value(modal.widget) |> String.trim()
+
+    case {modal.action, text} do
+      {_, ""} when modal.action != :filter ->
+        {s, []}
+
+      {:add, text} ->
+        task = Ops.add(s.tasks, text, s.today)
+        :ok = s.io.append.(s.paths.todo, [task])
+
+        {%{s | tasks: s.tasks ++ [task], status: "#{task.line}: added"}
+         |> State.refresh_mtimes()
+         |> State.clamp_selection(), []}
+
+      {:filter, text} ->
+        {%{s | filter_terms: String.split(text, ~r/\s+/, trim: true), list_idx: 0}, []}
+
+      {:edit, text} ->
+        {mutate_line(s, modal.line, &Ops.replace_text(&1, &2, text), "edited"), []}
+
+      {:append, text} ->
+        {mutate_line(s, modal.line, &Ops.append_text(&1, &2, text), "appended"), []}
+
+      {:prepend, text} ->
+        {mutate_line(s, modal.line, &Ops.prepend_text(&1, &2, text), "prepended"), []}
+
+      _ ->
+        {s, []}
+    end
+  end
+
+  def update({:select, item}, %{modal: %{action: :pri, line: line}} = s) do
+    s = %{s | mode: :normal, modal: nil}
+    prio = if item == "(aucune)", do: nil, else: :binary.first(item)
+    {mutate_line(s, line, &Ops.set_priority(&1, &2, prio), "priority"), []}
+  end
+
+  def update(:cancel, s), do: update(:modal_cancel, s)
+
+  def update({:dialog_result, r}, %{modal: %{action: a} = m} = s)
       when r in [:yes, :confirm, :ok] do
     s = %{s | mode: :normal, modal: nil}
-    {mutate_line(s, line, &Ops.delete/2, "deleted"), []}
+
+    case a do
+      :del ->
+        {mutate_line(s, m.line, &Ops.delete/2, "deleted"), []}
+
+      :archive ->
+        {open, done} = Ops.archive(s.tasks)
+        if done != [], do: :ok = s.io.append.(s.paths.done, done)
+        {State.mutate(s, {:ok, open}, "archived #{length(done)}"), []}
+
+      # :help et autres infos : fermer sans action.
+      _ ->
+        {s, []}
+    end
   end
 
   def update({:dialog_result, _}, s), do: {%{s | mode: :normal, modal: nil}, []}
@@ -183,10 +255,39 @@ defmodule TodoTxt.Tui do
   # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
   def update(_, s), do: {s, []}
 
-  defp modal_needs_task?(action), do: action in [:del]
+  # Printable keys from the real parser carry `key` and `char`; synthetic
+  # events (tests) may only set `key` — fill `char` so widgets see input.
+  defp normalize_key(%Event.Key{key: k, char: nil} = ev) when is_binary(k),
+    do: %{ev | char: k}
 
-  # Re-fetch the task by `line` (the list may have changed under the modal),
-  # then apply `op` through State.mutate — file stays source of truth.
+  defp normalize_key(ev), do: ev
+
+  # Re-fetch by `line` : la tâche a pu disparaître via un reload externe
+  # pendant que la modale était ouverte (review focus 1). En vue :done,
+  # l'op s'applique à done_tasks/done.txt — ses numéros de ligne sont
+  # positionnels et collisionnent avec todo.txt.
+  defp mutate_line(s, nil, _op, _label), do: s
+
+  defp mutate_line(%{view: :done} = s, line, op, label) do
+    case Enum.find(s.done_tasks, &(&1.line == line)) do
+      nil ->
+        %{s | status: "error: task #{line} no longer exists"}
+
+      fresh ->
+        case op.(s.done_tasks, fresh) do
+          {:ok, done2} ->
+            :ok = s.io.write.(s.paths.done, done2)
+
+            %{s | done_tasks: done2, status: "#{line}: #{label}"}
+            |> State.refresh_mtimes()
+            |> State.clamp_selection()
+
+          {:error, m} ->
+            %{s | status: "error: " <> m}
+        end
+    end
+  end
+
   defp mutate_line(s, line, op, label) do
     case Enum.find(s.tasks, &(&1.line == line)) do
       nil -> %{s | status: "error: task #{line} no longer exists"}

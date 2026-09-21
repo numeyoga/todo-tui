@@ -2,6 +2,7 @@ defmodule TodoTxt.TuiTest do
   use ExUnit.Case, async: true
   alias TodoTxt.{Parser, Tui, Tui.State}
   alias TermUI.Event
+  alias TermUI.Widgets.TextInput
 
   defp state(tasks, opts \\ []) do
     State.new(%{
@@ -199,5 +200,59 @@ defmodule TodoTxt.TuiTest do
     assert hd(s2.tasks).description == "fresh open"
     assert hd(s2.done_tasks).done
     assert s2.mtimes == %{todo: 42, done: 42}
+  end
+
+  test "a opens add modal; typing routes to TextInput; Enter submits" do
+    test_pid = self()
+    io = %{fake_io() | append: fn p, ts -> send(test_pid, {:append, p, ts}) && :ok end}
+    s = state([t("x", 1)], io: io)
+
+    {s2, []} = Tui.update({:open_modal, :add}, s)
+    assert s2.mode == :input and s2.modal.action == :add
+
+    {:msg, {:modal_event, ev}} = Tui.event_to_msg(Event.key("h"), s2)
+    {s3, []} = Tui.update({:modal_event, ev}, s2)
+    {:msg, {:modal_event, ev}} = Tui.event_to_msg(Event.key("i"), s3)
+    {s4, []} = Tui.update({:modal_event, ev}, s3)
+    assert TextInput.get_value(s4.modal.widget) == "hi"
+
+    {s5, []} = Tui.update(:modal_submit, s4)
+    assert s5.mode == :normal and s5.modal == nil
+    assert_received {:append, "t", [%{description: "hi", line: 2}]}
+  end
+
+  test "Esc cancels modal without mutating" do
+    s = state([t("a", 1)], mode: :input, modal: nil)
+    {s2, []} = Tui.update({:open_modal, :edit}, s)
+    {s3, []} = Tui.update(:modal_cancel, s2)
+    assert s3.mode == :normal and s3.modal == nil
+  end
+
+  test "p opens PickList; {:select, item} sets priority" do
+    s = state([t("a", 1)])
+    {s2, []} = Tui.update({:open_modal, :pri}, s)
+    assert s2.modal.action == :pri
+    {s3, []} = Tui.update({:select, "B"}, s2)
+    assert hd(s3.tasks).priority == ?B
+  end
+
+  test "dialog_result :yes deletes; :no closes" do
+    s = state([t("a", 1)])
+    {s2, []} = Tui.update({:open_modal, :del}, s)
+    {s3, []} = Tui.update({:dialog_result, :no}, s2)
+    assert s3.mode == :normal and length(s3.tasks) == 1
+    {s4, []} = Tui.update({:open_modal, :del}, s3)
+    {s5, []} = Tui.update({:dialog_result, :yes}, s4)
+    assert s5.tasks == []
+  end
+
+  test "submit on a task removed by an external reload fails cleanly (review focus 1)" do
+    s = state([t("a", 1)])
+    {s2, []} = Tui.update({:open_modal, :edit}, s)
+    # Simule un reload externe : la ligne 1 n'existe plus.
+    s3 = %{s2 | tasks: [Parser.parse("other", 7)], list_idx: 0}
+    {s4, []} = Tui.update(:modal_submit, s3)
+    assert s4.status =~ "error"
+    assert Enum.map(s4.tasks, & &1.line) == [7]
   end
 end
