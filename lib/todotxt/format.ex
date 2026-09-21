@@ -13,6 +13,16 @@ defmodule TodoTxt.Format do
     ?C => IO.ANSI.cyan()
   }
 
+  @doc """
+  Renders a task list as JSON when `opts.json` is set, otherwise
+  as `"N: <raw line>"` text lines (see `tasks/2`).
+  """
+  def render(tasks, %{json: true}), do: tasks_json(tasks)
+  def render(tasks, opts), do: tasks(tasks, opts)
+
+  @doc "Pretty-printed JSON array of `task_map/1` maps."
+  def tasks_json(tasks), do: Jason.encode!(Enum.map(tasks, &task_map/1), pretty: true)
+
   def tasks(tasks, opts) do
     color =
       not opts.plain and is_nil(System.get_env("NO_COLOR")) and

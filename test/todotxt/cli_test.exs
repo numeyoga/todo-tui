@@ -270,4 +270,55 @@ defmodule TodoTxt.CLITest do
   test "listaddons reports no addon support", %{env: e} do
     assert {:ok, "(no addons support)"} = CLI.run(["listaddons"], e)
   end
+
+  test "ls --json emits decodable task list", %{env: e} do
+    File.write!(e.paths.todo, "(A) call mom +fam @p due:2026-09-25\n")
+    {:ok, json} = CLI.run(["--json", "ls"], e)
+
+    assert [%{"line" => 1, "priority" => "A", "tags" => %{"due" => "2026-09-25"}}] =
+             Jason.decode!(json)
+  end
+
+  test "listall/due --json also emit JSON", %{env: e} do
+    File.write!(e.paths.todo, "a due:2026-09-19\n")
+    assert {:ok, j} = CLI.run(["--json", "due"], e)
+    assert [_ | _] = Jason.decode!(j)
+  end
+
+  test "listall --json includes tasks from both files", %{env: e} do
+    File.write!(e.paths.todo, "open +p\n")
+    File.write!(e.paths.done, "x 2026-09-20 old +p\n")
+    assert {:ok, j} = CLI.run(["--json", "listall"], e)
+    decoded = Jason.decode!(j)
+    assert length(decoded) == 2
+    assert Enum.any?(decoded, &(&1["done"] == true))
+  end
+
+  test "due --json adds a bucket field to each task", %{env: e} do
+    File.write!(e.paths.todo, "old due:2026-09-19\nnow due:2026-09-21\nnone\n")
+    assert {:ok, j} = CLI.run(["--json", "due"], e)
+    decoded = Jason.decode!(j)
+    assert Enum.find(decoded, &(&1["line"] == 1))["bucket"] == "overdue"
+    assert Enum.find(decoded, &(&1["line"] == 2))["bucket"] == "today"
+    # tasks without a valid due: tag are excluded, like the text output
+    refute Enum.any?(decoded, &(&1["line"] == 3))
+  end
+
+  test "listproj/listcon --json emit JSON arrays", %{env: e} do
+    File.write!(e.paths.todo, "a +p1 @c1\nb +p2\n")
+    assert {:ok, j} = CLI.run(["--json", "listproj"], e)
+    assert Jason.decode!(j) == ["+p1", "+p2"]
+    assert {:ok, j} = CLI.run(["--json", "listcon"], e)
+    assert Jason.decode!(j) == ["@c1"]
+  end
+
+  test "agenda --json emits dates map and thresholds list", %{env: e} do
+    File.write!(e.paths.todo, "a due:2026-09-22\nb due:2026-09-22\nsoon t:2026-09-25\n")
+
+    assert {:ok, j} = CLI.run(["--json", "agenda"], e)
+    decoded = Jason.decode!(j)
+    assert %{"dates" => dates, "thresholds" => thresholds} = decoded
+    assert [%{"line" => 1}, %{"line" => 2}] = dates["2026-09-22"]
+    assert [%{"line" => 3}] = thresholds
+  end
 end

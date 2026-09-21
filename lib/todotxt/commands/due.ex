@@ -15,9 +15,25 @@ defmodule TodoTxt.Commands.Due do
     groups =
       for {bucket, header} <- @buckets do
         ts = open |> Enum.filter(&(Query.due_bucket(&1, today) == bucket)) |> Query.sort()
-        if ts == [], do: nil, else: "#{header}:\n" <> Format.tasks(ts, opts)
+        {bucket, header, ts}
       end
 
-    {:ok, groups |> Enum.reject(&is_nil/1) |> Enum.join("\n\n")}
+    if opts.json do
+      maps =
+        for {bucket, _header, ts} <- groups,
+            t <- ts,
+            do: Map.put(Format.task_map(t), :bucket, bucket)
+
+      {:ok, Jason.encode!(maps, pretty: true)}
+    else
+      text =
+        groups
+        |> Enum.reject(fn {_b, _h, ts} -> ts == [] end)
+        |> Enum.map_join("\n\n", fn {_b, header, ts} ->
+          "#{header}:\n" <> Format.tasks(ts, opts)
+        end)
+
+      {:ok, text}
+    end
   end
 end

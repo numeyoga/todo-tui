@@ -21,8 +21,13 @@ defmodule TodoTxt.Commands.ListMeta do
 
   def run(_, _), do: {:usage, "todo listproj|listcon|listpri [A-Z]"}
 
-  defp list(%{tasks: t, done_tasks: d}, fun) do
+  defp list(%{tasks: t, done_tasks: d, opts: opts}, fun) do
     vals = (t ++ d) |> Enum.flat_map(fun) |> Enum.uniq() |> Enum.sort()
-    {:ok, Enum.join(vals, "\n")}
+
+    {:ok,
+     if(opts.json,
+       do: Jason.encode!(vals, pretty: true),
+       else: Enum.join(vals, "\n")
+     )}
   end
 end
