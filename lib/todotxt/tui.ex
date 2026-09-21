@@ -37,8 +37,20 @@ defmodule TodoTxt.Tui do
     receive do
       {:tui_exit, :edit} ->
         case edit_external(env) do
-          :ok -> run(env)
-          {:error, m} -> {:error, m}
+          :ok ->
+            # L'éditeur a pu réécrire les fichiers : recharger les deux listes
+            # avant de relancer, sinon env.tasks/done_tasks restent ceux
+            # d'avant l'édition et la prochaine mutation écraserait ses
+            # changements (refresh_mtimes neutralise en plus le watch).
+            with {:ok, tasks} <- env.io.read.(env.paths.todo),
+                 {:ok, done} <- env.io.read.(env.paths.done) do
+              run(%{env | tasks: tasks, done_tasks: done})
+            else
+              {:error, m} -> {:error, m}
+            end
+
+          {:error, m} ->
+            {:error, m}
         end
     after
       0 -> {:ok, nil}
@@ -104,13 +116,20 @@ defmodule TodoTxt.Tui do
 
       t ->
         reopened = Task.uncomplete(t)
-        :ok = s.io.append.(s.paths.todo, [reopened])
         done2 = Enum.reject(s.done_tasks, &(&1.line == t.line))
-        :ok = s.io.write.(s.paths.done, done2)
 
-        {%{s | done_tasks: done2, status: "#{t.line}: reopened"}
-         |> State.refresh_mtimes()
-         |> State.clamp_selection(), []}
+        s2 =
+          with :ok <- s.io.append.(s.paths.todo, [reopened]),
+               :ok <- s.io.write.(s.paths.done, done2) do
+            # Les DEUX fichiers ont changé : reload resynchronise les deux
+            # miroirs (s.tasks inclus) + mtimes + clamp, au lieu de ne mettre
+            # à jour que done_tasks à la main.
+            reload(%{s | status: "#{t.line}: reopened"})
+          else
+            {:error, m} -> %{s | status: "error: " <> m}
+          end
+
+        {s2, []}
     end
   end
 
@@ -138,17 +157,31 @@ defmodule TodoTxt.Tui do
   def update(:move, s) do
     case {s.view, State.selected_task(s)} do
       {:todo, t} when not is_nil(t) ->
-        :ok = s.io.append.(s.paths.done, [t])
-        {State.mutate(s, Ops.delete(s.tasks, t), "#{t.line}: moved to done"), []}
+        {:ok, open} = Ops.delete(s.tasks, t)
+
+        s2 =
+          with :ok <- s.io.append.(s.paths.done, [t]),
+               :ok <- s.io.write.(s.paths.todo, open) do
+            # done.txt ET todo.txt ont changé → reload resynchronise les deux.
+            reload(%{s | status: "#{t.line}: moved to done"})
+          else
+            {:error, m} -> %{s | status: "error: " <> m}
+          end
+
+        {s2, []}
 
       {:done, t} when not is_nil(t) ->
-        :ok = s.io.append.(s.paths.todo, [t])
         done2 = Enum.reject(s.done_tasks, &(&1.line == t.line))
-        :ok = s.io.write.(s.paths.done, done2)
 
-        {%{s | done_tasks: done2, status: "#{t.line}: moved to todo"}
-         |> State.refresh_mtimes()
-         |> State.clamp_selection(), []}
+        s2 =
+          with :ok <- s.io.append.(s.paths.todo, [t]),
+               :ok <- s.io.write.(s.paths.done, done2) do
+            reload(%{s | status: "#{t.line}: moved to todo"})
+          else
+            {:error, m} -> %{s | status: "error: " <> m}
+          end
+
+        {s2, []}
 
       _ ->
         {s, []}
@@ -221,11 +254,16 @@ defmodule TodoTxt.Tui do
 
       {:add, text} ->
         task = Ops.add(s.tasks, text, s.today)
-        :ok = s.io.append.(s.paths.todo, [task])
 
-        {%{s | tasks: s.tasks ++ [task], status: "#{task.line}: added"}
-         |> State.refresh_mtimes()
-         |> State.clamp_selection(), []}
+        case s.io.append.(s.paths.todo, [task]) do
+          :ok ->
+            {%{s | tasks: s.tasks ++ [task], status: "#{task.line}: added"}
+             |> State.refresh_mtimes()
+             |> State.clamp_selection(), []}
+
+          {:error, m} ->
+            {%{s | status: "error: " <> m}, []}
+        end
 
       {:filter, text} ->
         {%{s | filter_terms: String.split(text, ~r/\s+/, trim: true), list_idx: 0}, []}
@@ -262,8 +300,17 @@ defmodule TodoTxt.Tui do
 
       :archive ->
         {open, done} = Ops.archive(s.tasks)
-        if done != [], do: :ok = s.io.append.(s.paths.done, done)
-        {State.mutate(s, {:ok, open}, "archived #{length(done)}"), []}
+
+        s2 =
+          with :ok <- if(done == [], do: :ok, else: s.io.append.(s.paths.done, done)),
+               :ok <- s.io.write.(s.paths.todo, open) do
+            # done.txt (append) ET todo.txt (rewrite) ont changé → reload.
+            reload(%{s | status: "archived #{length(done)}"})
+          else
+            {:error, m} -> %{s | status: "error: " <> m}
+          end
+
+        {s2, []}
 
       # :help et autres infos : fermer sans action.
       _ ->
@@ -299,11 +346,15 @@ defmodule TodoTxt.Tui do
       fresh ->
         case op.(s.done_tasks, fresh) do
           {:ok, done2} ->
-            :ok = s.io.write.(s.paths.done, done2)
+            case s.io.write.(s.paths.done, done2) do
+              :ok ->
+                %{s | done_tasks: done2, status: "#{line}: #{label}"}
+                |> State.refresh_mtimes()
+                |> State.clamp_selection()
 
-            %{s | done_tasks: done2, status: "#{line}: #{label}"}
-            |> State.refresh_mtimes()
-            |> State.clamp_selection()
+              {:error, m} ->
+                %{s | status: "error: " <> m}
+            end
 
           {:error, m} ->
             %{s | status: "error: " <> m}

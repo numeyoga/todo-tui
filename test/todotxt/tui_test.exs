@@ -167,7 +167,13 @@ defmodule TodoTxt.TuiTest do
     io = %{
       fake_io()
       | append: fn p, _ts -> send(test_pid, {:append, p}) && :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        # Après le déplacement, done.txt ne contient plus que d1 : le reload
+        # final relit les deux fichiers.
+        read: fn
+          "d" -> {:ok, [t("x 2026-09-19 d1", 5)]}
+          _ -> {:ok, []}
+        end
     }
 
     s =
@@ -305,5 +311,149 @@ defmodule TodoTxt.TuiTest do
     {_s, cmds} = Tui.update(:edit_external, s)
     assert_received {:tui_exit, :edit}
     assert TermUI.Command.quit() in cmds or :quit in cmds
+  end
+
+  # --- Régressions : resync cross-fichier + erreurs io (review) ---
+
+  test "x in done view reloads both files: s.tasks picks up the reopened task" do
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | append: fn _, _ -> :ok end,
+        write: fn _, _ -> :ok end,
+        read: fn
+          "t" -> send(test_pid, :reloaded_todo) && {:ok, [t("a", 1), t("fini", 8)]}
+          "d" -> {:ok, []}
+        end
+    }
+
+    s = state([t("a", 1)], io: io, view: :done, done_tasks: [t("x 2026-09-20 fini", 7)])
+    {s2, []} = Tui.update(:toggle_done, s)
+    assert_received :reloaded_todo
+    assert Enum.map(s2.tasks, & &1.line) == [1, 8]
+    assert s2.done_tasks == []
+    assert s2.status =~ "reopened"
+  end
+
+  test "move to done then done-view delete: done.txt write keeps the moved task" do
+    test_pid = self()
+    moved = t("a", 1)
+    survivor = t("x 2026-09-19 keep", 5)
+
+    io = %{
+      fake_io()
+      | append: fn _, _ -> :ok end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        read: fn
+          "t" -> {:ok, []}
+          "d" -> {:ok, [moved, survivor]}
+        end
+    }
+
+    s = state([moved], io: io)
+    {s2, []} = Tui.update(:move, s)
+    assert_received {:write, "t", []}
+    # Le reload post-move a resynchronisé done_tasks depuis done.txt.
+    assert Enum.map(s2.done_tasks, & &1.line) == [1, 5]
+
+    # Vue :done — tri desc par ligne : list_idx 0 sélectionne survivor (5).
+    s3 = %{s2 | view: :done, list_idx: 0}
+    {s4, []} = Tui.update({:open_modal, :del}, s3)
+    {_s5, []} = Tui.update({:dialog_result, :yes}, s4)
+    assert_received {:write, "d", remaining}
+    assert Enum.map(remaining, & &1.line) == [1]
+  end
+
+  test "archive reloads done_tasks; a later done-view delete keeps archived tasks" do
+    test_pid = self()
+    done1 = t("x 2026-09-20 fini", 2)
+    old = t("x 2026-09-19 ancien", 5)
+
+    io = %{
+      fake_io()
+      | append: fn _, _ -> :ok end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        read: fn
+          "t" -> {:ok, [t("open", 1)]}
+          "d" -> {:ok, [done1, old]}
+        end
+    }
+
+    s = state([t("open", 1), done1], io: io)
+    {s2, []} = Tui.update({:open_modal, :archive}, s)
+    {s3, []} = Tui.update({:dialog_result, :yes}, s2)
+    assert s3.status =~ "archived 1"
+    assert_received {:write, "t", [%{line: 1}]}
+    # done_tasks vient du reload, pas d'une mise à jour manuelle.
+    assert Enum.map(s3.done_tasks, & &1.line) == [2, 5]
+
+    # Supprimer `old` en vue :done (tri desc → list_idx 0 = ligne 5).
+    s4 = %{s3 | view: :done, list_idx: 0}
+    {s5, []} = Tui.update({:open_modal, :del}, s4)
+    {_s6, []} = Tui.update({:dialog_result, :yes}, s5)
+    assert_received {:write, "d", remaining}
+    assert Enum.map(remaining, & &1.line) == [2]
+  end
+
+  test "relaunch after $EDITOR re-reads both files into env" do
+    test_pid = self()
+    old_editor = System.get_env("EDITOR")
+    System.put_env("EDITOR", "true")
+
+    runner = fn env ->
+      send(test_pid, {:ran, env.tasks})
+      :ok
+    end
+
+    io = %{
+      fake_io()
+      | read: fn _ -> {:ok, [t("post-edit", 9)]} end
+    }
+
+    env = %{
+      paths: %{todo: "t", done: "d", report: "r"},
+      tasks: [t("pre-edit", 1)],
+      done_tasks: [],
+      today: ~D[2026-09-21],
+      io: io,
+      runner: runner
+    }
+
+    try do
+      send(self(), {:tui_exit, :edit})
+      assert {:ok, nil} = Tui.run(env)
+      assert_received {:ran, [%{description: "pre-edit"}]}
+      # Le 2e run reçoit les listes relues après l'édition, pas l'env figé.
+      assert_received {:ran, [%{description: "post-edit"}]}
+    after
+      if old_editor,
+        do: System.put_env("EDITOR", old_editor),
+        else: System.delete_env("EDITOR")
+    end
+  end
+
+  test "io write error lands in status instead of crashing" do
+    io = %{fake_io() | write: fn _, _ -> {:error, "disk full"} end}
+    s = state([t("a", 1)], io: io)
+    {s2, []} = Tui.update(:toggle_done, s)
+    assert s2.status =~ "error"
+    assert s2.status =~ "disk full"
+  end
+
+  test "failed append in move skips the remaining writes" do
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | append: fn _, _ -> {:error, "disk full"} end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+    }
+
+    s = state([t("a", 1)], io: io)
+    {s2, []} = Tui.update(:move, s)
+    assert s2.status =~ "error"
+    assert s2.status =~ "disk full"
+    refute_received {:write, _, _}
   end
 end

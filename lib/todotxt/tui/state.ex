@@ -136,8 +136,10 @@ defmodule TodoTxt.Tui.State do
 
   @doc "Apply an Op result: write files via io, refresh mtimes, clamp, status."
   def mutate(s, {:ok, tasks2}, toast) do
-    :ok = s.io.write.(s.paths.todo, tasks2)
-    %{s | tasks: tasks2, status: toast} |> refresh_mtimes() |> clamp_selection()
+    case s.io.write.(s.paths.todo, tasks2) do
+      :ok -> %{s | tasks: tasks2, status: toast} |> refresh_mtimes() |> clamp_selection()
+      {:error, m} -> %{s | status: "error: " <> m}
+    end
   end
 
   def mutate(s, {:error, msg}, _toast), do: %{s | status: "error: " <> msg}
