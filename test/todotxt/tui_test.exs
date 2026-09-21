@@ -246,6 +246,15 @@ defmodule TodoTxt.TuiTest do
     assert s5.tasks == []
   end
 
+  test "Ctrl+letter inside a TextInput modal does not insert text" do
+    s = state([t("a", 1)])
+    {s2, []} = Tui.update({:open_modal, :add}, s)
+    ev = %Event.Key{key: "w", char: nil, modifiers: [:ctrl]}
+    {s3, []} = Tui.update({:modal_event, ev}, s2)
+    assert TextInput.get_value(s3.modal.widget) == ""
+    assert s3.mode == :input and s3.modal.action == :add
+  end
+
   test "submit on a task removed by an external reload fails cleanly (review focus 1)" do
     s = state([t("a", 1)])
     {s2, []} = Tui.update({:open_modal, :edit}, s)

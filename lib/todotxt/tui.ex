@@ -257,7 +257,9 @@ defmodule TodoTxt.Tui do
 
   # Printable keys from the real parser carry `key` and `char`; synthetic
   # events (tests) may only set `key` — fill `char` so widgets see input.
-  defp normalize_key(%Event.Key{key: k, char: nil} = ev) when is_binary(k),
+  # Modified keys (Ctrl+A-Z reach us as key: "a", char: nil, modifiers: [:ctrl])
+  # must NOT get char — they are commands, not text.
+  defp normalize_key(%Event.Key{key: k, char: nil, modifiers: []} = ev) when is_binary(k),
     do: %{ev | char: k}
 
   defp normalize_key(ev), do: ev
