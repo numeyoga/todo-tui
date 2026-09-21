@@ -35,6 +35,13 @@ defmodule TodoTxt.StoreTest do
     assert length(ts) == 2
   end
 
+  test "append to a directory returns error tuple", %{dir: d} do
+    p = Path.join(d, "adir")
+    File.mkdir_p!(p)
+    assert {:error, msg} = Store.append(p, Parser.parse_all("x done1"))
+    assert msg =~ "cannot append"
+  end
+
   test "write_atomic leaves no tmp file and creates parent dirs", %{dir: d} do
     p = Path.join([d, "sub", "dir", "todo.txt"])
     assert :ok = Store.write_atomic(p, "hello\n")

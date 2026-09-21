@@ -30,9 +30,19 @@ defmodule TodoTxt.Store do
 
     case File.open(path, [:append]) do
       {:ok, f} ->
-        IO.binwrite(f, content)
-        File.close(f)
-        :ok
+        write_result = IO.binwrite(f, content)
+        close_result = File.close(f)
+
+        case {write_result, close_result} do
+          {:ok, :ok} ->
+            :ok
+
+          {{:error, r}, _} ->
+            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+
+          {_, {:error, r}} ->
+            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+        end
 
       {:error, r} ->
         {:error, "cannot append #{path}: #{:file.format_error(r)}"}
