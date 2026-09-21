@@ -210,4 +210,12 @@ defmodule TodoTxt.CLITest do
     {:ok, out} = CLI.run(["--plain", "agenda"], e)
     assert out =~ "2026-09-22" and out =~ "a due" and out =~ "b due"
   end
+
+  test "agenda surfaces upcoming t: thresholds", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "hidden soon t:2026-09-25\nfar t:2027-01-01\n")
+    {:ok, out} = CLI.run(["--plain", "agenda"], e)
+    assert out =~ "THRESHOLDS" and out =~ "hidden soon"
+    refute out =~ "far"
+  end
 end
