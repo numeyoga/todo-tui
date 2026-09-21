@@ -465,6 +465,24 @@ defmodule TodoTxt.CLITest do
     assert {:usage, _} = TodoTxt.CLI.run(["--tui", "ls"], %{today: ~D[2026-09-21]})
   end
 
+  test "--tui with unreadable file returns error before starting runtime" do
+    # A directory path -> File.read returns {:error, :eisdir}.
+    # (enoent reads as {:ok, []} by Store design — use a real error case.)
+    dir =
+      Path.join(System.tmp_dir!(), "todotxt-tui-test-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(dir)
+
+    env = %{
+      paths: %{todo: dir, done: "d", report: "r"},
+      today: ~D[2026-09-21],
+      runner: fn _ -> raise "must not run" end
+    }
+
+    assert {:error, msg} = TodoTxt.CLI.run(["--tui"], env)
+    assert msg =~ "cannot read"
+  end
+
   test "COLORS=off in config file forces plain output", %{env: e, dir: dir} do
     env = with_config_file(dir, "COLORS=off\n", e)
     File.write!(e.paths.todo, "(A) a\n")

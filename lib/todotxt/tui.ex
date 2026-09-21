@@ -157,6 +157,27 @@ defmodule TodoTxt.Tui do
 
   def update(:reload, s), do: {reload(s), []}
 
+  # :tick (2 s, Command.interval en init) : watch externe sur les mtimes.
+  # Aucun changement → no-op (même struct). Changement → reload, qui
+  # rafraîchit les mtimes et clampe la sélection.
+  def update(:tick, s) do
+    todo_m = State.mtime(s.io, s.paths.todo)
+    done_m = State.mtime(s.io, s.paths.done)
+
+    if todo_m == s.mtimes[:todo] and done_m == s.mtimes[:done] do
+      {s, []}
+    else
+      {reload(%{s | status: "rechargé (fichier modifié)"}), []}
+    end
+  end
+
+  # Le send DOIT précéder le Command.quit() : handle_exit lit la mailbox
+  # en `after 0` — le message doit déjà y être quand le runtime s'arrête.
+  def update(:edit_external, s) do
+    if s.caller, do: send(s.caller, {:tui_exit, :edit})
+    {s, [Command.quit()]}
+  end
+
   def update({:open_modal, action}, s) do
     needs_task = action in [:edit, :append, :prepend, :del, :pri]
 

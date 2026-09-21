@@ -264,4 +264,46 @@ defmodule TodoTxt.TuiTest do
     assert s4.status =~ "error"
     assert Enum.map(s4.tasks, & &1.line) == [7]
   end
+
+  test "tick reloads when mtime changed externally" do
+    test_pid = self()
+    old = {{2026, 1, 1}, {0, 0, 0}}
+    new = {{2026, 1, 2}, {0, 0, 0}}
+
+    io = %{
+      fake_io()
+      | stat: fn
+          "t" -> {:ok, %{mtime: new}}
+          _ -> {:error, :enoent}
+        end,
+        read: fn _ -> send(test_pid, :reread) && {:ok, []} end
+    }
+
+    s = state([], io: io)
+    s = %{s | mtimes: %{todo: old, done: nil}}
+    {s2, []} = Tui.update(:tick, s)
+    assert_received :reread
+    assert s2.mtimes.todo == new
+    assert s2.status =~ "recharg"
+  end
+
+  test "tick is a no-op when mtimes unchanged" do
+    m = {{2026, 1, 1}, {0, 0, 0}}
+
+    io = %{
+      fake_io()
+      | stat: fn _ -> {:ok, %{mtime: m}} end,
+        read: fn _ -> raise "must not read" end
+    }
+
+    s = %{state([], io: io) | mtimes: %{todo: m, done: m}}
+    assert {^s, []} = Tui.update(:tick, s)
+  end
+
+  test "E sends {:tui_exit, :edit} to caller then quits" do
+    s = state([])
+    {_s, cmds} = Tui.update(:edit_external, s)
+    assert_received {:tui_exit, :edit}
+    assert TermUI.Command.quit() in cmds or :quit in cmds
+  end
 end
