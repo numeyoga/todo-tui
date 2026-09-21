@@ -446,6 +446,25 @@ defmodule TodoTxt.CLITest do
     assert {:error, _} = CLI.run(["ls"], e)
   end
 
+  test "--tui dispatches to Tui.run and returns its result" do
+    test_pid = self()
+
+    env = %{
+      paths: %{todo: "t.txt", done: "d.txt", report: "r.txt"},
+      tasks: [],
+      done_tasks: [],
+      today: ~D[2026-09-21],
+      runner: fn env -> send(test_pid, {:tui_ran, env.paths.todo}) && {:ok, nil} end
+    }
+
+    assert {:ok, nil} = TodoTxt.CLI.run(["--tui"], env)
+    assert_received {:tui_ran, "t.txt"}
+  end
+
+  test "--tui rejects extra args" do
+    assert {:usage, _} = TodoTxt.CLI.run(["--tui", "ls"], %{today: ~D[2026-09-21]})
+  end
+
   test "COLORS=off in config file forces plain output", %{env: e, dir: dir} do
     env = with_config_file(dir, "COLORS=off\n", e)
     File.write!(e.paths.todo, "(A) a\n")

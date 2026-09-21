@@ -41,6 +41,7 @@ defmodule TodoTxt.Commands.Help do
       report                 append "DATE <open> <done>" to report.txt
 
     Méta:
+      --tui                  interactive TUI
       help, -h               this help
       --version              print version
     """

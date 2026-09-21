@@ -63,6 +63,7 @@ defmodule TodoTxt.CLI do
     done_file: :string,
     plain: :boolean,
     json: :boolean,
+    tui: :boolean,
     help: :boolean,
     version: :boolean
   ]
@@ -120,24 +121,38 @@ defmodule TodoTxt.CLI do
 
     env = env |> Map.put_new(:paths, Config.resolve_paths(opts)) |> Map.put(:opts, opts)
 
-    case rest do
-      # help/listaddons are intercepted before dispatch: they must work
-      # even when the task files are unreadable.
-      ["help" | _] ->
-        TodoTxt.Commands.Help.run([], env)
+    if kw[:tui] do
+      case rest do
+        [] ->
+          with {:ok, tasks} <- Store.read(env.paths.todo),
+               {:ok, done} <- Store.read(env.paths.done) do
+            env = Map.merge(env, %{tasks: tasks, done_tasks: done})
+            TodoTxt.Tui.run(env)
+          end
 
-      ["listaddons" | _] ->
-        TodoTxt.Commands.ListAddons.run([], env)
+        _ ->
+          {:usage, "--tui takes no command"}
+      end
+    else
+      case rest do
+        # help/listaddons are intercepted before dispatch: they must work
+        # even when the task files are unreadable.
+        ["help" | _] ->
+          TodoTxt.Commands.Help.run([], env)
 
-      [cmd | args] ->
-        case @commands[cmd] do
-          nil -> {:usage, "unknown command #{cmd} (try: todo help)"}
-          {mod, sub} -> dispatch(mod, [sub | args], env)
-          mod -> dispatch(mod, args, env)
-        end
+        ["listaddons" | _] ->
+          TodoTxt.Commands.ListAddons.run([], env)
 
-      [] ->
-        {:usage, "no command (try: todo help)"}
+        [cmd | args] ->
+          case @commands[cmd] do
+            nil -> {:usage, "unknown command #{cmd} (try: todo help)"}
+            {mod, sub} -> dispatch(mod, [sub | args], env)
+            mod -> dispatch(mod, args, env)
+          end
+
+        [] ->
+          {:usage, "no command (try: todo help)"}
+      end
     end
   end
 
