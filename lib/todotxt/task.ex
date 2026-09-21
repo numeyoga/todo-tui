@@ -26,5 +26,11 @@ defmodule TodoTxt.Task do
   def append_text(%__MODULE__{} = t, s), do: set_text(t, String.trim(t.description <> " " <> s))
   def prepend_text(%__MODULE__{} = t, s), do: set_text(t, String.trim(s <> " " <> t.description))
 
+  # Stub — implemented in Task 9. Always returns nil; `List.first/1`
+  # keeps the inferred type `t() | nil` so `Commands.Do` type-checks
+  # the recurrence branch without warnings.
+  @spec next_recurrence(t(), Date.t()) :: t() | nil
+  def next_recurrence(t, _today), do: List.first([nil, t])
+
   defp reparse(%__MODULE__{} = t), do: Parser.parse(Parser.render(t), t.line)
 end

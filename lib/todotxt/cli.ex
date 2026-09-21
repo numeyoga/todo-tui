@@ -24,6 +24,10 @@ defmodule TodoTxt.CLI do
   @commands %{
     "add" => TodoTxt.Commands.Add,
     "a" => TodoTxt.Commands.Add,
+    "do" => TodoTxt.Commands.Do,
+    "undo" => TodoTxt.Commands.Undo,
+    "del" => TodoTxt.Commands.Del,
+    "rm" => TodoTxt.Commands.Del,
     "ls" => TodoTxt.Commands.List,
     "list" => TodoTxt.Commands.List
   }

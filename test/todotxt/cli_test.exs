@@ -1,6 +1,8 @@
 defmodule TodoTxt.CLITest do
   use ExUnit.Case
 
+  alias TodoTxt.{CLI, Store}
+
   setup do
     dir =
       Path.join(
@@ -57,5 +59,40 @@ defmodule TodoTxt.CLITest do
   test "unknown command is a usage error", %{env: e} do
     assert {:usage, m} = TodoTxt.CLI.run(["bogus"], e)
     assert m =~ "bogus"
+  end
+
+  test "do marks done with today, drops priority", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "(A) call mom\nother\n")
+    assert {:ok, _} = CLI.run(["do", "1"], e)
+    assert {:ok, [t1, _]} = Store.read(e.paths.todo)
+    assert t1.done and t1.completion_date == ~D[2026-09-21] and t1.priority == nil
+  end
+
+  test "do on bad number and on already-done", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "x 2026-01-01 done\n")
+    assert {:error, m} = CLI.run(["do", "9"], e)
+    assert m =~ "9"
+    assert {:error, _} = CLI.run(["do", "abc"], e)
+  end
+
+  test "undo reopens", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "x 2026-09-21 task\n")
+    {:ok, _} = CLI.run(["undo", "1"], e)
+    {:ok, [t]} = Store.read(e.paths.todo)
+    refute t.done
+  end
+
+  test "del removes line; del N TERM strips term", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "one\ntwo +p\n")
+    {:ok, _} = CLI.run(["del", "2", "+p"], e)
+    {:ok, [_, t]} = Store.read(e.paths.todo)
+    assert t.raw == "two"
+    {:ok, _} = CLI.run(["del", "1"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "two"
   end
 end
