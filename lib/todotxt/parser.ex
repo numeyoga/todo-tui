@@ -37,6 +37,18 @@ defmodule TodoTxt.Parser do
     }
   end
 
+  def render(%Task{} = t) do
+    [
+      if(t.done, do: "x"),
+      if(t.done && t.completion_date, do: Date.to_string(t.completion_date)),
+      if(!t.done && t.priority, do: <<"(", t.priority, ")">>),
+      if(t.creation_date, do: Date.to_string(t.creation_date)),
+      t.description
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
   def parse_all(content) do
     content
     |> String.split("\n")
