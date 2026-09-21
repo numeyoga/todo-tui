@@ -141,4 +141,45 @@ defmodule TodoTxt.CLITest do
     assert {:error, _} = CLI.run(["pri", "2", "1"], e)
     assert {:error, _} = CLI.run(["pri", "1", "A"], e)
   end
+
+  test "mv moves task to done.txt", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "one\ntwo\n")
+    {:ok, _} = CLI.run(["mv", "1", "done"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "two"
+    assert {:ok, [d]} = Store.read(e.paths.done)
+    assert d.raw == "one"
+  end
+
+  test "mv moves task back to todo.txt", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "open\n")
+    File.write!(e.paths.done, "x 2026-09-20 old\n")
+    {:ok, _} = CLI.run(["move", "1", "todo"], e)
+    assert {:ok, []} = Store.read(e.paths.done)
+    assert {:ok, [_, t]} = Store.read(e.paths.todo)
+    assert t.raw == "x 2026-09-20 old"
+  end
+
+  test "mv rejects a bad destination", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "one\n")
+    assert {:usage, _} = CLI.run(["mv", "1", "elsewhere"], e)
+  end
+
+  test "listall includes done file; listproj/listcon/listpri", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "a +p1 @c1\nb +p2\n")
+    File.write!(e.paths.done, "x 2026-09-20 old +p1\n")
+    {:ok, out} = CLI.run(["--plain", "listall"], e)
+    assert out =~ "a +p1" and out =~ "old +p1"
+    {:ok, out} = CLI.run(["--plain", "listproj"], e)
+    assert out =~ "+p1" and out =~ "+p2"
+    {:ok, out} = CLI.run(["--plain", "listcon"], e)
+    assert out =~ "@c1"
+    {:ok, _} = CLI.run(["pri", "1", "A"], e)
+    {:ok, out} = CLI.run(["--plain", "listpri", "A"], e)
+    assert out =~ "a +p1"
+  end
 end

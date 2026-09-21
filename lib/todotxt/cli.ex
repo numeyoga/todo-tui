@@ -36,7 +36,17 @@ defmodule TodoTxt.CLI do
     "app" => TodoTxt.Commands.Append,
     "prepend" => TodoTxt.Commands.Prepend,
     "prep" => TodoTxt.Commands.Prepend,
-    "replace" => TodoTxt.Commands.Replace
+    "replace" => TodoTxt.Commands.Replace,
+    "move" => TodoTxt.Commands.Move,
+    "mv" => TodoTxt.Commands.Move,
+    "listall" => TodoTxt.Commands.ListAll,
+    "lsa" => TodoTxt.Commands.ListAll,
+    "listproj" => {TodoTxt.Commands.ListMeta, "proj"},
+    "lsprj" => {TodoTxt.Commands.ListMeta, "proj"},
+    "listcon" => {TodoTxt.Commands.ListMeta, "con"},
+    "lsc" => {TodoTxt.Commands.ListMeta, "con"},
+    "listpri" => {TodoTxt.Commands.ListMeta, "pri"},
+    "lspr" => {TodoTxt.Commands.ListMeta, "pri"}
   }
 
   def main(argv) do
@@ -61,17 +71,19 @@ defmodule TodoTxt.CLI do
     {opts, rest} = parse_global(argv, %{file: nil, done_file: nil, plain: false, json: false})
     env = env |> Map.put_new(:paths, Config.resolve_paths(opts)) |> Map.put(:opts, opts)
 
+    dispatch = fn mod, args ->
+      with {:ok, tasks} <- Store.read(env.paths.todo),
+           {:ok, done} <- Store.read(env.paths.done) do
+        mod.run(args, Map.merge(env, %{tasks: tasks, done_tasks: done}))
+      end
+    end
+
     case rest do
       [cmd | args] ->
         case @commands[cmd] do
-          nil ->
-            {:usage, "unknown command #{cmd} (try: todo help)"}
-
-          mod ->
-            with {:ok, tasks} <- Store.read(env.paths.todo),
-                 {:ok, done} <- Store.read(env.paths.done) do
-              mod.run(args, Map.merge(env, %{tasks: tasks, done_tasks: done}))
-            end
+          nil -> {:usage, "unknown command #{cmd} (try: todo help)"}
+          {mod, sub} -> dispatch.(mod, [sub | args])
+          mod -> dispatch.(mod, args)
         end
 
       [] ->
