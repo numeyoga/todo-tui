@@ -48,8 +48,16 @@ defmodule TodoTxt.CLI do
     "listpri" => {TodoTxt.Commands.ListMeta, "pri"},
     "lspr" => {TodoTxt.Commands.ListMeta, "pri"},
     "due" => TodoTxt.Commands.Due,
-    "agenda" => TodoTxt.Commands.Agenda
+    "agenda" => TodoTxt.Commands.Agenda,
+    "archive" => TodoTxt.Commands.Archive,
+    "dedupe" => TodoTxt.Commands.Dedupe,
+    "report" => TodoTxt.Commands.Report,
+    "edit" => TodoTxt.Commands.Edit,
+    "help" => TodoTxt.Commands.Help,
+    "listaddons" => TodoTxt.Commands.ListAddons
   }
+
+  @version "todo 0.1.0"
 
   def main(argv) do
     env = %{today: Date.utc_today()}
@@ -81,6 +89,12 @@ defmodule TodoTxt.CLI do
     end
 
     case rest do
+      ["--version" | _] ->
+        {:ok, @version}
+
+      ["-h" | _] ->
+        {:ok, TodoTxt.Commands.Help.text()}
+
       [cmd | args] ->
         case @commands[cmd] do
           nil -> {:usage, "unknown command #{cmd} (try: todo help)"}

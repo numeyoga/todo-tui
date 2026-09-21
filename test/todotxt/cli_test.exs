@@ -10,6 +10,8 @@ defmodule TodoTxt.CLITest do
         "ttcli#{System.system_time(:nanosecond)}#{System.unique_integer([:positive])}"
       )
 
+    File.mkdir_p!(dir)
+
     env = %{
       paths: %{
         todo: Path.join(dir, "todo.txt"),
@@ -217,5 +219,55 @@ defmodule TodoTxt.CLITest do
     {:ok, out} = CLI.run(["--plain", "agenda"], e)
     assert out =~ "THRESHOLDS" and out =~ "hidden soon"
     refute out =~ "far"
+  end
+
+  test "archive moves x tasks to done.txt and creates it", %{env: e} do
+    File.write!(e.paths.todo, "x done1\nopen\nx done2\n")
+    {:ok, _} = CLI.run(["archive"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "open"
+    {:ok, ds} = Store.read(e.paths.done)
+    assert length(ds) == 2
+  end
+
+  test "dedupe removes duplicate lines keeping first", %{env: e} do
+    File.write!(e.paths.todo, "same\nother\nsame\n")
+    {:ok, _} = CLI.run(["dedupe"], e)
+    {:ok, ts} = Store.read(e.paths.todo)
+    assert Enum.map(ts, & &1.raw) == ["same", "other"]
+  end
+
+  test "report appends dated stats", %{env: e} do
+    File.write!(e.paths.todo, "a\nb\n")
+    File.write!(e.paths.done, "x c\n")
+    {:ok, _} = CLI.run(["report"], e)
+    assert File.read!(e.paths.report) =~ "2026-09-21 2 1"
+  end
+
+  test "help and --version", %{env: e} do
+    assert {:ok, out} = CLI.run(["help"], e)
+    assert out =~ "add" and out =~ "ls" and out =~ "do"
+    assert {:ok, out} = CLI.run(["--version"], e)
+    assert out =~ "todo 0.1.0"
+  end
+
+  test "edit runs $EDITOR and reports exit status", %{env: e} do
+    old = System.get_env("EDITOR")
+
+    on_exit(fn ->
+      if old, do: System.put_env("EDITOR", old), else: System.delete_env("EDITOR")
+    end)
+
+    System.put_env("EDITOR", "true")
+    assert {:ok, out} = CLI.run(["edit"], e)
+    assert out =~ "edited"
+
+    System.put_env("EDITOR", "false")
+    assert {:error, m} = CLI.run(["edit"], e)
+    assert m =~ "exited"
+  end
+
+  test "listaddons reports no addon support", %{env: e} do
+    assert {:ok, "(no addons support)"} = CLI.run(["listaddons"], e)
   end
 end

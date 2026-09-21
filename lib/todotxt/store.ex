@@ -49,6 +49,12 @@ defmodule TodoTxt.Store do
     end
   end
 
+  @spec append_line(Path.t(), String.t()) :: {:ok, :ok} | {:error, File.posix()}
+  def append_line(path, line) do
+    File.mkdir_p!(Path.dirname(path))
+    File.open(path, [:append], &IO.binwrite(&1, line <> "\n"))
+  end
+
   @spec write_atomic(Path.t(), String.t()) :: :ok | {:error, String.t()}
   def write_atomic(path, content) do
     File.mkdir_p!(Path.dirname(path))
