@@ -35,6 +35,39 @@ defmodule TodoTxt.StoreTest do
     assert length(ts) == 2
   end
 
+  test "append repairs a missing trailing newline", %{dir: d} do
+    p = Path.join(d, "todo.txt")
+    File.write!(p, "task one")
+    assert :ok = Store.append(p, Parser.parse_all("task two"))
+    assert File.read!(p) == "task one\ntask two\n"
+    assert {:ok, [t1, t2]} = Store.read(p)
+    assert t1.line == 1 and t2.line == 2
+  end
+
+  test "append compacts trailing blank lines so the task lands at max line + 1",
+       %{dir: d} do
+    p = Path.join(d, "todo.txt")
+    File.write!(p, "a\n\n\n")
+    assert :ok = Store.append(p, Parser.parse_all("b"))
+    assert File.read!(p) == "a\nb\n"
+    assert {:ok, [_, t2]} = Store.read(p)
+    assert t2.line == 2
+  end
+
+  test "append_line repairs a missing trailing newline", %{dir: d} do
+    p = Path.join(d, "report.txt")
+    File.write!(p, "2026-09-20 1 0")
+    assert :ok = Store.append_line(p, "2026-09-21 2 1")
+    assert File.read!(p) == "2026-09-20 1 0\n2026-09-21 2 1\n"
+  end
+
+  test "append_line compacts trailing blank lines", %{dir: d} do
+    p = Path.join(d, "report.txt")
+    File.write!(p, "2026-09-20 1 0\n\n")
+    assert :ok = Store.append_line(p, "2026-09-21 2 1")
+    assert File.read!(p) == "2026-09-20 1 0\n2026-09-21 2 1\n"
+  end
+
   test "append to a directory returns error tuple", %{dir: d} do
     p = Path.join(d, "adir")
     File.mkdir_p!(p)

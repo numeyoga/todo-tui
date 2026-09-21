@@ -35,15 +35,22 @@ defmodule TodoTxt.Task do
 
   Returns a fresh task (re-parsed, `line` 0 — the caller assigns the
   real number) with `due:` recomputed, `creation_date` = `today`, and
-  priority/projects/contexts/other tags preserved. `nil` when the task
-  has no valid `recur:` tag.
+  priority/projects/contexts/other tags preserved. A `t:` threshold
+  is shifted by the same recurrence: from its own date in strict
+  mode (preserving the `t:`↔`due:` offset), from `today` otherwise.
+  An unparseable `t:` is dropped. `nil` when the task has no valid
+  `recur:` tag.
   """
   @spec next_recurrence(t(), Date.t()) :: t() | nil
   def next_recurrence(%__MODULE__{tags: %{"recur" => r}} = t, today) do
     with {:ok, strict, n, unit} <- parse_recur(r),
          base when not is_nil(base) <- recur_base(t, strict, today) do
       new_due = shift(base, n, unit)
-      desc = update_tag(t.description, "due", Date.to_string(new_due))
+
+      desc =
+        t.description
+        |> update_tag("due", Date.to_string(new_due))
+        |> shift_threshold(t.tags["t"], strict, n, unit, today)
 
       raw =
         [if(t.priority, do: <<"(", t.priority, ")">>), Date.to_string(today), desc]
@@ -76,6 +83,25 @@ defmodule TodoTxt.Task do
     else
       today
     end
+  end
+
+  defp shift_threshold(desc, nil, _strict, _n, _u, _today), do: desc
+
+  defp shift_threshold(desc, v, strict, n, unit, today) do
+    case Date.from_iso8601(v) do
+      {:ok, old_t} ->
+        base = if strict, do: old_t, else: today
+        update_tag(desc, "t", Date.to_string(shift(base, n, unit)))
+
+      _ ->
+        remove_tag(desc, "t")
+    end
+  end
+
+  defp remove_tag(desc, key) do
+    desc
+    |> String.replace(~r/\s*\b#{key}:\S+/, "")
+    |> String.trim()
   end
 
   defp shift(d, n, "d"), do: Date.add(d, n)

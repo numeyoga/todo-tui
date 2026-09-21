@@ -18,7 +18,9 @@ defmodule TodoTxt.CLITest do
         done: Path.join(dir, "done.txt"),
         report: Path.join(dir, "report.txt")
       },
-      today: ~D[2026-09-21]
+      today: ~D[2026-09-21],
+      # isolate from any real config file; config tests override/delete this
+      config: %{}
     }
 
     %{env: env, dir: dir}
@@ -320,5 +322,167 @@ defmodule TodoTxt.CLITest do
     assert %{"dates" => dates, "thresholds" => thresholds} = decoded
     assert [%{"line" => 1}, %{"line" => 2}] = dates["2026-09-22"]
     assert [%{"line" => 3}] = thresholds
+  end
+
+  test "add repairs a missing trailing newline instead of corrupting", %{env: e} do
+    File.write!(e.paths.todo, "task one")
+    assert {:ok, out} = CLI.run(["add", "task two"], e)
+    assert out =~ "2:"
+    assert File.read!(e.paths.todo) == "task one\n2026-09-21 task two\n"
+  end
+
+  test "add on a file with trailing blank lines echoes and lands on the next real line",
+       %{env: e} do
+    File.write!(e.paths.todo, "a\n\n\n")
+    assert {:ok, out} = CLI.run(["add", "b"], e)
+    assert out =~ "2:"
+    assert File.read!(e.paths.todo) == "a\n2026-09-21 b\n"
+    {:ok, tasks} = Store.read(e.paths.todo)
+    assert List.last(tasks).line == 2
+  end
+
+  test "global flags work after the command", %{env: e} do
+    File.write!(e.paths.todo, "(A) call mom +fam\n")
+    assert {:ok, j} = CLI.run(["ls", "--json"], e)
+    assert [%{"line" => 1, "priority" => "A"}] = Jason.decode!(j)
+    # --plain also works in any position
+    assert {:ok, out} = CLI.run(["ls", "--plain"], e)
+    assert out == "1: (A) call mom +fam"
+  end
+
+  test "-f after the command selects the todo file", %{env: e} do
+    other = Path.join(dir_of(e), "other.txt")
+    File.write!(other, "x\n")
+
+    # drop injected paths so -f drives resolve_paths; keep done.txt in tmp
+    old = System.get_env("TODOTXT_DONE_FILE")
+    on_exit(fn -> restore_env("TODOTXT_DONE_FILE", old) end)
+    System.put_env("TODOTXT_DONE_FILE", Path.join(dir_of(e), "done.txt"))
+
+    env = Map.delete(e, :paths)
+    assert {:ok, out} = CLI.run(["ls", "--plain", "-f", other], env)
+    assert out == "1: x"
+  end
+
+  test "unknown options and dangling -f are usage errors", %{env: e} do
+    assert {:usage, m} = CLI.run(["ls", "--bogus"], e)
+    assert m =~ "--bogus"
+    assert {:usage, m} = CLI.run(["--bogus"], e)
+    assert m =~ "--bogus"
+    assert {:usage, m} = CLI.run(["-f"], e)
+    assert m =~ "-f"
+    # a positional that is not a command stays a usage error
+    assert {:usage, m} = CLI.run(["bogus-flag"], e)
+    assert m =~ "bogus-flag"
+  end
+
+  test "--file=X form works", %{env: e, dir: dir} do
+    other = Path.join(dir, "other.txt")
+    File.write!(other, "z\n")
+
+    old = System.get_env("TODOTXT_DONE_FILE")
+    on_exit(fn -> restore_env("TODOTXT_DONE_FILE", old) end)
+    System.put_env("TODOTXT_DONE_FILE", Path.join(dir, "done.txt"))
+
+    env = Map.delete(e, :paths)
+    assert {:ok, out} = CLI.run(["--file=#{other}", "ls", "--plain"], env)
+    assert out == "1: z"
+  end
+
+  test "mv appends to destination first: append failure keeps the source intact",
+       %{env: e} do
+    File.write!(e.paths.todo, "one\ntwo\n")
+    # done.txt.tmp as a directory makes the atomic append to done.txt fail
+    File.write!(e.paths.done, "")
+    File.mkdir_p!(e.paths.done <> ".tmp")
+    assert {:error, _} = CLI.run(["mv", "1", "done"], e)
+    {:ok, tasks} = Store.read(e.paths.todo)
+    assert Enum.map(tasks, & &1.raw) == ["one", "two"]
+  end
+
+  test "do with a malformed recur: tag errors and leaves the file unchanged",
+       %{env: e} do
+    File.write!(e.paths.todo, "task recur:banana\n")
+    assert {:error, m} = CLI.run(["do", "1"], e)
+    assert m =~ "banana" and m =~ "1"
+    assert File.read!(e.paths.todo) == "task recur:banana\n"
+  end
+
+  test "do recur +1w shifts t: along with due:", %{env: e} do
+    File.write!(e.paths.todo, "renew t:2026-09-24 due:2026-09-25 recur:+1w\n")
+    assert {:ok, out} = CLI.run(["do", "1"], e)
+    assert out =~ "t:2026-09-28" and out =~ "due:2026-09-28"
+    {:ok, [_, new]} = Store.read(e.paths.todo)
+    assert new.tags["t"] == "2026-09-28" and new.tags["due"] == "2026-09-28"
+  end
+
+  test "do recur strict 1w preserves the t:↔due: offset", %{env: e} do
+    File.write!(e.paths.todo, "renew t:2026-09-24 due:2026-09-25 recur:1w\n")
+    assert {:ok, _} = CLI.run(["do", "1"], e)
+    {:ok, [_, new]} = Store.read(e.paths.todo)
+    assert new.tags["t"] == "2026-10-01" and new.tags["due"] == "2026-10-02"
+  end
+
+  test "help and listaddons do not read the task files", %{env: e} do
+    # a directory at the todo path makes Store.read fail
+    File.mkdir_p!(e.paths.todo)
+    File.mkdir_p!(e.paths.done)
+    assert {:ok, out} = CLI.run(["help"], e)
+    assert out =~ "add"
+    assert {:ok, "(no addons support)"} = CLI.run(["listaddons"], e)
+    assert {:ok, out} = CLI.run(["-h"], e)
+    assert out =~ "add"
+    # sanity: a real command does hit the files and fails
+    assert {:error, _} = CLI.run(["ls"], e)
+  end
+
+  test "COLORS=off in config file forces plain output", %{env: e, dir: dir} do
+    env = with_config_file(dir, "COLORS=off\n", e)
+    File.write!(e.paths.todo, "(A) a\n")
+
+    old_term = System.get_env("TERM")
+    old_nc = System.get_env("NO_COLOR")
+
+    on_exit(fn ->
+      restore_env("TERM", old_term)
+      restore_env("NO_COLOR", old_nc)
+    end)
+
+    System.put_env("TERM", "xterm-256color")
+    System.delete_env("NO_COLOR")
+
+    assert {:ok, out} = CLI.run(["ls"], env)
+    refute out =~ "\e["
+    assert out == "1: (A) a"
+  end
+
+  test "LS_SORT=line in config file sorts ls by line only", %{env: e, dir: dir} do
+    env = with_config_file(dir, "LS_SORT=line\n", e)
+    File.write!(e.paths.todo, "plain\n(B) b\n")
+
+    assert {:ok, out} = CLI.run(["--plain", "ls"], env)
+    assert out == "1: plain\n2: (B) b"
+    # listall too
+    assert {:ok, out} = CLI.run(["--plain", "listall"], env)
+    assert out == "1: plain\n2: (B) b"
+  end
+
+  defp dir_of(env), do: Path.dirname(env.paths.todo)
+
+  defp restore_env(k, nil), do: System.delete_env(k)
+  defp restore_env(k, v), do: System.put_env(k, v)
+
+  # Point XDG_CONFIG_HOME at a tmp dir holding the given config body and
+  # drop the injected :config so CLI.run loads the real file.
+  defp with_config_file(dir, body, env) do
+    cfg = Path.join(dir, "cfg")
+    File.mkdir_p!(Path.join(cfg, "todotxt"))
+    File.write!(Path.join([cfg, "todotxt", "config"]), body)
+
+    old = System.get_env("XDG_CONFIG_HOME")
+    System.put_env("XDG_CONFIG_HOME", cfg)
+    on_exit(fn -> restore_env("XDG_CONFIG_HOME", old) end)
+
+    Map.delete(env, :config)
   end
 end

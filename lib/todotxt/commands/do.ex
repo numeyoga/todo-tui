@@ -13,6 +13,7 @@ defmodule TodoTxt.Commands.Do do
     done = fn t -> Task.complete(t, today) end
 
     with {:ok, t} <- Helpers.fetch(tasks, n),
+         :ok <- valid_recur(t, today),
          :ok <- Store.write(paths.todo, Helpers.replace(tasks, done.(t))),
          {:ok, recur_note} <- append_recurrence(t, tasks, paths, today) do
       {:ok, "#{t.line}: #{Parser.render(done.(t))}#{recur_note}"}
@@ -20,6 +21,20 @@ defmodule TodoTxt.Commands.Do do
   end
 
   def run(_, _), do: {:usage, "todo do ITEM#"}
+
+  # A present but malformed recur: tag is an explicit error — the task
+  # is left untouched so the user can fix the tag.
+  defp valid_recur(t, today) do
+    case t.tags["recur"] do
+      nil ->
+        :ok
+
+      v ->
+        if Task.next_recurrence(t, today),
+          do: :ok,
+          else: {:error, "invalid recur: #{inspect(v)} on task #{t.line}"}
+    end
+  end
 
   defp append_recurrence(t, tasks, paths, today) do
     case Task.next_recurrence(t, today) do

@@ -3,7 +3,10 @@ defmodule TodoTxt.Store do
   The only module allowed to do file I/O on todo.txt files.
 
   Missing files read as `{:ok, []}`. Full rewrites go through
-  `write_atomic/2` (tmp file + rename).
+  `write_atomic/2` (tmp file + rename). Appends are read+rewrite
+  too (files are small): a missing trailing newline is repaired and
+  trailing blank lines are compacted, so the appended line lands at
+  `max(task.line) + 1` — the number `add`/`do` echo.
   """
 
   alias TodoTxt.Parser
@@ -25,49 +28,24 @@ defmodule TodoTxt.Store do
 
   @spec append(Path.t(), [TodoTxt.Task.t()]) :: :ok | {:error, String.t()}
   def append(path, tasks) do
-    File.mkdir_p!(Path.dirname(path))
-    content = Enum.map_join(tasks, "\n", &Parser.render/1) <> "\n"
-
-    case File.open(path, [:append]) do
-      {:ok, f} ->
-        write_result = IO.binwrite(f, content)
-        close_result = File.close(f)
-
-        case {write_result, close_result} do
-          {:ok, :ok} ->
-            :ok
-
-          {{:error, r}, _} ->
-            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
-
-          {_, {:error, r}} ->
-            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
-        end
-
-      {:error, r} ->
-        {:error, "cannot append #{path}: #{:file.format_error(r)}"}
-    end
+    append_content(path, Enum.map_join(tasks, "\n", &Parser.render/1) <> "\n")
   end
 
   @spec append_line(Path.t(), String.t()) :: :ok | {:error, String.t()}
   def append_line(path, line) do
-    File.mkdir_p!(Path.dirname(path))
+    append_content(path, line <> "\n")
+  end
 
-    case File.open(path, [:append]) do
-      {:ok, f} ->
-        write_result = IO.binwrite(f, line <> "\n")
-        close_result = File.close(f)
-
-        case {write_result, close_result} do
-          {:ok, :ok} ->
-            :ok
-
-          {{:error, r}, _} ->
-            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
-
-          {_, {:error, r}} ->
-            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+  defp append_content(path, new) do
+    case File.read(path) do
+      {:ok, existing} ->
+        case String.trim_trailing(existing) do
+          "" -> write_atomic(path, new)
+          trimmed -> write_atomic(path, trimmed <> "\n" <> new)
         end
+
+      {:error, :enoent} ->
+        write_atomic(path, new)
 
       {:error, r} ->
         {:error, "cannot append #{path}: #{:file.format_error(r)}"}

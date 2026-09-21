@@ -48,6 +48,28 @@ defmodule TodoTxt.TaskTest do
     assert Task.next_recurrence(t, ~D[2026-09-21]).tags["due"] == "2026-09-24"
   end
 
+  test "recur +1w shifts t: like due: (base = completion date)" do
+    t = Parser.parse("renew t:2026-09-24 due:2026-09-25 recur:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["t"] == "2026-09-28"
+    assert n.tags["due"] == "2026-09-28"
+  end
+
+  test "strict recur:1w shifts t: from its own date, preserving the offset" do
+    t = Parser.parse("renew t:2026-09-24 due:2026-09-25 recur:1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["t"] == "2026-10-01"
+    assert n.tags["due"] == "2026-10-02"
+  end
+
+  test "unparseable t: is dropped from the next occurrence" do
+    t = Parser.parse("renew t:someday due:2026-09-25 recur:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    refute Map.has_key?(n.tags, "t")
+    refute n.raw =~ "t:someday"
+    assert n.tags["due"] == "2026-09-28"
+  end
+
   test "no recur tag -> nil; invalid recur -> nil" do
     assert Task.next_recurrence(Parser.parse("x", 1), ~D[2026-09-21]) == nil
     assert Task.next_recurrence(Parser.parse("x recur:banana", 1), ~D[2026-09-21]) == nil

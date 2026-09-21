@@ -18,9 +18,11 @@ defmodule TodoTxt.Commands.Move do
   def run(_, _), do: {:usage, "todo mv ITEM# done|todo"}
 
   defp move(tasks, n, src, dest, name) do
+    # Append to the destination first: if it fails the task is still
+    # in the source — a duplicate beats a loss (same order as archive).
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         :ok <- Store.write(src, Enum.reject(tasks, &(&1.line == t.line))),
-         :ok <- Store.append(dest, [t]) do
+         :ok <- Store.append(dest, [t]),
+         :ok <- Store.write(src, Enum.reject(tasks, &(&1.line == t.line))) do
       {:ok, "#{t.line}: moved to #{name}"}
     end
   end

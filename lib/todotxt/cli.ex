@@ -7,7 +7,8 @@ defmodule TodoTxt.CLI do
   place allowed to call `System.halt/1`.
 
   `run/2` is pure dispatch for tests: it takes `argv` and an injected
-  `env` (`%{paths: ..., today: ...}`) and returns
+  `env` (`%{paths: ..., today: ...}`, optionally `config:` to bypass
+  the config file) and returns
   `{:ok, msg | nil} | {:error, msg} | {:usage, msg}`.
 
   Command contract:
@@ -16,7 +17,7 @@ defmodule TodoTxt.CLI do
         {:ok, msg} | {:error, msg} | {:usage, msg}
 
   where `ctx` is `%{paths:, tasks:, done_tasks:, today:, opts:}` and
-  `opts` is `%{file:, done_file:, plain: bool, json: bool}`.
+  `opts` is `%{file:, done_file:, plain: bool, json: bool, sort: nil | "line"}`.
   """
 
   alias TodoTxt.{Config, Store}
@@ -57,6 +58,16 @@ defmodule TodoTxt.CLI do
     "listaddons" => TodoTxt.Commands.ListAddons
   }
 
+  @switches [
+    file: :string,
+    done_file: :string,
+    plain: :boolean,
+    json: :boolean,
+    help: :boolean,
+    version: :boolean
+  ]
+  @aliases [f: :file, d: :done_file, h: :help]
+
   @version "todo 0.1.0"
 
   def main(argv) do
@@ -78,28 +89,51 @@ defmodule TodoTxt.CLI do
   end
 
   def run(argv, env) do
-    {opts, rest} = parse_global(argv, %{file: nil, done_file: nil, plain: false, json: false})
-    env = env |> Map.put_new(:paths, Config.resolve_paths(opts)) |> Map.put(:opts, opts)
+    {kw, rest, invalid} = OptionParser.parse(argv, strict: @switches, aliases: @aliases)
 
-    dispatch = fn mod, args ->
-      with {:ok, tasks} <- Store.read(env.paths.todo),
-           {:ok, done} <- Store.read(env.paths.done) do
-        mod.run(args, Map.merge(env, %{tasks: tasks, done_tasks: done}))
-      end
-    end
+    cond do
+      invalid != [] ->
+        names = Enum.map_join(invalid, ", ", fn {name, _} -> name end)
+        {:usage, "unknown option(s): #{names}"}
 
-    case rest do
-      ["--version" | _] ->
+      kw[:version] ->
         {:ok, @version}
 
-      ["-h" | _] ->
+      kw[:help] ->
         {:ok, TodoTxt.Commands.Help.text()}
+
+      true ->
+        run_command(rest, kw, env)
+    end
+  end
+
+  defp run_command(rest, kw, env) do
+    opts =
+      %{
+        file: kw[:file],
+        done_file: kw[:done_file],
+        plain: kw[:plain] || false,
+        json: kw[:json] || false,
+        sort: nil
+      }
+      |> merge_config(Map.get(env, :config) || Config.load_file())
+
+    env = env |> Map.put_new(:paths, Config.resolve_paths(opts)) |> Map.put(:opts, opts)
+
+    case rest do
+      # help/listaddons are intercepted before dispatch: they must work
+      # even when the task files are unreadable.
+      ["help" | _] ->
+        TodoTxt.Commands.Help.run([], env)
+
+      ["listaddons" | _] ->
+        TodoTxt.Commands.ListAddons.run([], env)
 
       [cmd | args] ->
         case @commands[cmd] do
           nil -> {:usage, "unknown command #{cmd} (try: todo help)"}
-          {mod, sub} -> dispatch.(mod, [sub | args])
-          mod -> dispatch.(mod, args)
+          {mod, sub} -> dispatch(mod, [sub | args], env)
+          mod -> dispatch(mod, args, env)
         end
 
       [] ->
@@ -107,15 +141,23 @@ defmodule TodoTxt.CLI do
     end
   end
 
-  defp parse_global(argv, opts) do
-    case argv do
-      ["-f", v | r] -> parse_global(r, %{opts | file: v})
-      ["--file", v | r] -> parse_global(r, %{opts | file: v})
-      ["-d", v | r] -> parse_global(r, %{opts | done_file: v})
-      ["--done-file", v | r] -> parse_global(r, %{opts | done_file: v})
-      ["--plain" | r] -> parse_global(r, %{opts | plain: true})
-      ["--json" | r] -> parse_global(r, %{opts | json: true})
-      _ -> {opts, argv}
+  defp dispatch(mod, args, env) do
+    with {:ok, tasks} <- Store.read(env.paths.todo),
+         {:ok, done} <- Store.read(env.paths.done) do
+      mod.run(args, Map.merge(env, %{tasks: tasks, done_tasks: done}))
     end
+  end
+
+  # Config-file defaults (spec §5): `COLORS=off|0|false` forces plain
+  # output, `LS_SORT=line` makes ls/listall sort by line only.
+  # Explicit flags win over config.
+  defp merge_config(opts, config) do
+    colors_off = String.downcase(config["COLORS"] || "") in ["off", "0", "false"]
+
+    %{
+      opts
+      | plain: opts.plain or colors_off,
+        sort: if(config["LS_SORT"] == "line", do: "line", else: opts.sort)
+    }
   end
 end
