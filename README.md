@@ -18,6 +18,8 @@ mix escript.build        # produces ./todo
 mix escript.install
 ```
 
+Full user documentation (in French): [docs/GUIDE.md](docs/GUIDE.md).
+
 ## Usage
 
 ```
@@ -48,7 +50,7 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] COMMAND [ARGS...]
 
 | Command | Description |
 |---|---|
-| `ls\|list [TERMS...]` | Open, visible tasks sorted by priority then line. TERMS are AND-ed; `+proj` and `@ctx` match exactly, anything else is a substring match |
+| `ls\|list [TERMS...]` | Visible tasks sorted by priority then line — done tasks shown dimmed, future `t:` hidden. TERMS are AND-ed; `+proj` and `@ctx` match exactly, anything else is a substring match |
 | `listall\|lsa` | All tasks from `todo.txt` **and** `done.txt` |
 | `listproj\|lsprj` | Unique `+projects` across both files |
 | `listcon\|lsc` | Unique `@contexts` across both files |
@@ -93,8 +95,9 @@ Paths are resolved in this order (first wins):
    (`KEY=value` lines)
 5. XDG default: `$XDG_DATA_HOME/todo/` (i.e. `~/.local/share/todo/`)
 
-`done.txt` and `report.txt` always live next to / are derived from the
-same directory.
+`done.txt` can be relocated independently via `-d` /
+`TODOTXT_DONE_FILE`; `report.txt` follows the data directory
+(`TODOTXT_DIR` / `TODO_DIR` / XDG).
 
 ### Environment variables
 

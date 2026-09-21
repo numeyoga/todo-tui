@@ -38,6 +38,16 @@ defmodule TodoTxt.CLITest do
     assert {:usage, _} = TodoTxt.CLI.run(["add"], e)
   end
 
+  test "add keeps a leading (A) priority ahead of the creation date", %{env: e} do
+    assert {:ok, out} = TodoTxt.CLI.run(["add", "(A) urgent @phone"], e)
+    assert out =~ "(A)"
+    {:ok, [t]} = TodoTxt.Store.read(e.paths.todo)
+    assert t.priority == ?A
+    assert t.creation_date == ~D[2026-09-21]
+    assert t.description =~ "urgent"
+    refute t.description =~ "(A)"
+  end
+
   test "ls lists sorted with stable line numbers", %{env: e, dir: dir} do
     File.mkdir_p!(dir)
     File.write!(e.paths.todo, "plain\n(B) b\n(A) a t:2099-01-01\n")
