@@ -29,7 +29,14 @@ defmodule TodoTxt.CLI do
     "del" => TodoTxt.Commands.Del,
     "rm" => TodoTxt.Commands.Del,
     "ls" => TodoTxt.Commands.List,
-    "list" => TodoTxt.Commands.List
+    "list" => TodoTxt.Commands.List,
+    "pri" => TodoTxt.Commands.Pri,
+    "depri" => TodoTxt.Commands.Depri,
+    "append" => TodoTxt.Commands.Append,
+    "app" => TodoTxt.Commands.Append,
+    "prepend" => TodoTxt.Commands.Prepend,
+    "prep" => TodoTxt.Commands.Prepend,
+    "replace" => TodoTxt.Commands.Replace
   }
 
   def main(argv) do

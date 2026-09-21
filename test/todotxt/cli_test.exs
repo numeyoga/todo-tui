@@ -95,4 +95,29 @@ defmodule TodoTxt.CLITest do
     assert {:ok, [t]} = Store.read(e.paths.todo)
     assert t.raw == "two"
   end
+
+  test "pri/depri/append/prepend/replace", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "call mom\n")
+    {:ok, _} = CLI.run(["pri", "1", "B"], e)
+    {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.priority == ?B
+    {:ok, _} = CLI.run(["depri", "1"], e)
+    {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.priority == nil
+    {:ok, _} = CLI.run(["append", "1", "+fam"], e)
+    {:ok, _} = CLI.run(["prepend", "1", "please"], e)
+    {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "please call mom +fam"
+    {:ok, _} = CLI.run(["replace", "1", "new", "text", "+p"], e)
+    {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "new text +p"
+  end
+
+  test "pri rejects invalid priority and done tasks", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "x done\nopen\n")
+    assert {:error, _} = CLI.run(["pri", "2", "1"], e)
+    assert {:error, _} = CLI.run(["pri", "1", "A"], e)
+  end
 end
