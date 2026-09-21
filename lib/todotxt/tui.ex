@@ -2,7 +2,7 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
-  alias TodoTxt.Ops
+  alias TodoTxt.{Ops, Task}
   alias TodoTxt.Tui.{Keys, State}
   alias TermUI.{Command, Event}
 
@@ -92,6 +92,26 @@ defmodule TodoTxt.Tui do
 
   def update(:clear_filter, s), do: {%{s | filter_terms: [], list_idx: 0}, []}
   def update(:quit, s), do: {s, [Command.quit()]}
+
+  # En vue :done, la sélection vient de done_tasks — done.txt est positionnel,
+  # ses numéros de ligne collisionnent avec todo.txt : on ne touche PAS à
+  # s.tasks. On réouvre, on append à todo.txt, on réécrit done.txt sans elle.
+  def update(:toggle_done, %{view: :done} = s) do
+    case State.selected_task(s) do
+      nil ->
+        {s, []}
+
+      t ->
+        reopened = Task.uncomplete(t)
+        :ok = s.io.append.(s.paths.todo, [reopened])
+        done2 = Enum.reject(s.done_tasks, &(&1.line == t.line))
+        :ok = s.io.write.(s.paths.done, done2)
+
+        {%{s | done_tasks: done2, status: "#{t.line}: reopened"}
+         |> State.refresh_mtimes()
+         |> State.clamp_selection(), []}
+    end
+  end
 
   def update(:toggle_done, s) do
     case State.selected_task(s) do

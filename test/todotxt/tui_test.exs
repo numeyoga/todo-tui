@@ -125,4 +125,79 @@ defmodule TodoTxt.TuiTest do
     {s3, []} = Tui.update({:dialog_result, :yes}, s2)
     assert s3.list_idx == 0 and length(s3.tasks) == 1
   end
+
+  test "x in done view reopens into todo.txt and rewrites done.txt" do
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | append: fn p, ts -> send(test_pid, {:append, p, ts}) && :ok end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+    }
+
+    s = state([t("a", 1)], io: io, view: :done, done_tasks: [t("x 2026-09-20 fini", 7)])
+    {s2, []} = Tui.update(:toggle_done, s)
+    assert s2.done_tasks == []
+    assert s2.status =~ "reopened"
+    # Append à todo.txt AVANT la réécriture de done.txt.
+    assert_received {:append, "t", [reopened]}
+    refute reopened.done
+    assert_received {:write, "d", []}
+    # todo.txt n'est jamais réécrit par cette mutation (pas de collision).
+    refute_received {:write, "t", _}
+  end
+
+  test "del confirm on a task that vanished errors without writing" do
+    test_pid = self()
+    io = %{fake_io() | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end}
+    s = state([t("a", 1), t("b", 2)], io: io, list_idx: 1)
+    {s2, []} = Tui.update({:open_modal, :del}, s)
+    # La tâche a disparu entre l'ouverture du modal et la confirmation.
+    s2 = %{s2 | tasks: [t("a", 1)]}
+    {s3, []} = Tui.update({:dialog_result, :yes}, s2)
+    assert s3.status =~ "no longer exists"
+    assert s3.mode == :normal and s3.modal == nil
+    refute_received {:write, _, _}
+  end
+
+  test "m in done view moves task back to todo.txt" do
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | append: fn p, _ts -> send(test_pid, {:append, p}) && :ok end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+    }
+
+    s =
+      state([t("a", 1)],
+        io: io,
+        view: :done,
+        done_tasks: [t("x 2026-09-19 d1", 5), t("x 2026-09-20 d2", 6)]
+      )
+
+    {s2, []} = Tui.update(:move, s)
+    assert length(s2.done_tasks) == 1
+    assert s2.status =~ "moved to todo"
+    assert_received {:append, "t"}
+    assert_received {:write, "d", [_]}
+  end
+
+  test "r reloads both files via io and refreshes mtimes" do
+    io = %{
+      read: fn
+        "t" -> {:ok, [t("fresh open", 1)]}
+        "d" -> {:ok, [t("x 2026-09-20 archived", 1)]}
+      end,
+      write: fn _, _ -> :ok end,
+      append: fn _, _ -> :ok end,
+      stat: fn _ -> {:ok, %{mtime: 42}} end
+    }
+
+    s = state([t("stale", 1)], io: io)
+    {s2, []} = Tui.update(:reload, s)
+    assert hd(s2.tasks).description == "fresh open"
+    assert hd(s2.done_tasks).done
+    assert s2.mtimes == %{todo: 42, done: 42}
+  end
 end
