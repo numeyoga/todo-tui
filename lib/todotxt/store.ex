@@ -49,10 +49,29 @@ defmodule TodoTxt.Store do
     end
   end
 
-  @spec append_line(Path.t(), String.t()) :: {:ok, :ok} | {:error, File.posix()}
+  @spec append_line(Path.t(), String.t()) :: :ok | {:error, String.t()}
   def append_line(path, line) do
     File.mkdir_p!(Path.dirname(path))
-    File.open(path, [:append], &IO.binwrite(&1, line <> "\n"))
+
+    case File.open(path, [:append]) do
+      {:ok, f} ->
+        write_result = IO.binwrite(f, line <> "\n")
+        close_result = File.close(f)
+
+        case {write_result, close_result} do
+          {:ok, :ok} ->
+            :ok
+
+          {{:error, r}, _} ->
+            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+
+          {_, {:error, r}} ->
+            {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+        end
+
+      {:error, r} ->
+        {:error, "cannot append #{path}: #{:file.format_error(r)}"}
+    end
   end
 
   @spec write_atomic(Path.t(), String.t()) :: :ok | {:error, String.t()}

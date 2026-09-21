@@ -42,6 +42,20 @@ defmodule TodoTxt.StoreTest do
     assert msg =~ "cannot append"
   end
 
+  test "append_line appends a raw line and creates the file", %{dir: d} do
+    p = Path.join([d, "sub", "report.txt"])
+    assert :ok = Store.append_line(p, "2026-09-21 2 1")
+    assert :ok = Store.append_line(p, "2026-09-22 3 1")
+    assert File.read!(p) == "2026-09-21 2 1\n2026-09-22 3 1\n"
+  end
+
+  test "append_line to a directory returns error tuple", %{dir: d} do
+    p = Path.join(d, "adir")
+    File.mkdir_p!(p)
+    assert {:error, msg} = Store.append_line(p, "x")
+    assert msg =~ "cannot append"
+  end
+
   test "write_atomic leaves no tmp file and creates parent dirs", %{dir: d} do
     p = Path.join([d, "sub", "dir", "todo.txt"])
     assert :ok = Store.write_atomic(p, "hello\n")

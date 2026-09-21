@@ -13,10 +13,8 @@ defmodule TodoTxt.Commands.Report do
     open = Enum.count(tasks, &(not &1.done))
     done = length(done_tasks) + Enum.count(tasks, & &1.done)
 
-    with {:ok, _} <- Store.append_line(paths.report, "#{today} #{open} #{done}") do
+    with :ok <- Store.append_line(paths.report, "#{today} #{open} #{done}") do
       {:ok, "#{today} #{open} #{done}"}
-    else
-      {:error, r} -> {:error, "cannot write #{paths.report}: #{:file.format_error(r)}"}
     end
   end
 end
