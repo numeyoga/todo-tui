@@ -24,3 +24,7 @@ todotxt-*.tar
 
 # The built escript binary.
 /todo
+
+# Agent workspaces (worktrees, superpowers scratch)
+/.worktrees/
+/.superpowers/
