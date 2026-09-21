@@ -3,7 +3,7 @@ defmodule TodoTxt.Tui do
   use TermUI.Elm
 
   alias TodoTxt.{Ops, Task}
-  alias TodoTxt.Tui.{Keys, Modal, State}
+  alias TodoTxt.Tui.{Keys, Modal, State, View}
   alias TermUI.{Command, Event}
   alias TermUI.Widgets.TextInput
 
@@ -308,6 +308,6 @@ defmodule TodoTxt.Tui do
     end
   end
 
-  def view(_), do: text("todo --tui")
+  def view(state), do: View.render(state)
   def handle_info(msg, state), do: update(msg, state)
 end
