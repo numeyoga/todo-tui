@@ -2,6 +2,7 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
+  alias TodoTxt.Ops
   alias TodoTxt.Tui.{Keys, State}
   alias TermUI.{Command, Event}
 
@@ -92,8 +93,97 @@ defmodule TodoTxt.Tui do
   def update(:clear_filter, s), do: {%{s | filter_terms: [], list_idx: 0}, []}
   def update(:quit, s), do: {s, [Command.quit()]}
 
+  def update(:toggle_done, s) do
+    case State.selected_task(s) do
+      nil ->
+        {s, []}
+
+      %{done: true} = t ->
+        {State.mutate(s, Ops.uncomplete(s.tasks, t), "#{t.line}: reopened"), []}
+
+      t ->
+        case Ops.complete(s.tasks, t, s.today) do
+          {:ok, ts, recur} ->
+            # Le recur rejoint la liste réécrite (fin de fichier, comme le CLI).
+            ts = if recur, do: ts ++ [%{recur | line: Ops.next_line(s.tasks)}], else: ts
+            {State.mutate(s, {:ok, ts}, "#{t.line}: done"), []}
+
+          {:error, m} ->
+            {%{s | status: "error: " <> m}, []}
+        end
+    end
+  end
+
+  def update(:move, s) do
+    case {s.view, State.selected_task(s)} do
+      {:todo, t} when not is_nil(t) ->
+        :ok = s.io.append.(s.paths.done, [t])
+        {State.mutate(s, Ops.delete(s.tasks, t), "#{t.line}: moved to done"), []}
+
+      {:done, t} when not is_nil(t) ->
+        :ok = s.io.append.(s.paths.todo, [t])
+        done2 = Enum.reject(s.done_tasks, &(&1.line == t.line))
+        :ok = s.io.write.(s.paths.done, done2)
+
+        {%{s | done_tasks: done2, status: "#{t.line}: moved to todo"}
+         |> State.refresh_mtimes()
+         |> State.clamp_selection(), []}
+
+      _ ->
+        {s, []}
+    end
+  end
+
+  def update(:reload, s), do: {reload(s), []}
+
+  # Scaffold de modal (Task 7 ajoute les vrais widgets) : map simple
+  # %{action:, line:} — pas de widget/widget_mod.
+  def update({:open_modal, action}, s) do
+    if modal_needs_task?(action) and is_nil(State.selected_task(s)) do
+      {s, []}
+    else
+      line =
+        case State.selected_task(s) do
+          nil -> nil
+          t -> t.line
+        end
+
+      {%{s | mode: :input, modal: %{action: action, line: line}}, []}
+    end
+  end
+
+  def update({:dialog_result, r}, %{modal: %{action: :del, line: line}} = s)
+      when r in [:yes, :confirm, :ok] do
+    s = %{s | mode: :normal, modal: nil}
+    {mutate_line(s, line, &Ops.delete/2, "deleted"), []}
+  end
+
+  def update({:dialog_result, _}, s), do: {%{s | mode: :normal, modal: nil}, []}
+
   # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
   def update(_, s), do: {s, []}
+
+  defp modal_needs_task?(action), do: action in [:del]
+
+  # Re-fetch the task by `line` (the list may have changed under the modal),
+  # then apply `op` through State.mutate — file stays source of truth.
+  defp mutate_line(s, line, op, label) do
+    case Enum.find(s.tasks, &(&1.line == line)) do
+      nil -> %{s | status: "error: task #{line} no longer exists"}
+      fresh -> State.mutate(s, op.(s.tasks, fresh), "#{line}: #{label}")
+    end
+  end
+
+  defp reload(s) do
+    with {:ok, tasks} <- s.io.read.(s.paths.todo),
+         {:ok, done} <- s.io.read.(s.paths.done) do
+      %{s | tasks: tasks, done_tasks: done}
+      |> State.refresh_mtimes()
+      |> State.clamp_selection()
+    else
+      {:error, m} -> %{s | status: "error: " <> m}
+    end
+  end
 
   def view(_), do: text("todo --tui")
   def handle_info(msg, state), do: update(msg, state)

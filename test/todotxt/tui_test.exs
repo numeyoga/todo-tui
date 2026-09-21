@@ -57,4 +57,72 @@ defmodule TodoTxt.TuiTest do
     assert {:msg, {:modal_event, %Event.Key{key: "x"}}} =
              Tui.event_to_msg(Event.key("x"), s)
   end
+
+  test "x on open task completes it and writes via io" do
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        append: fn _, _ -> :ok end
+    }
+
+    s = state([t("a", 1)], io: io)
+    {s2, []} = Tui.update(:toggle_done, s)
+    assert hd(s2.tasks).done
+    assert_received {:write, "t", [%{done: true}]}
+  end
+
+  test "x on done task reopens; recur spawns next occurrence in the write" do
+    test_pid = self()
+    io = %{fake_io() | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end}
+    s = state([t("x 2026-09-20 a", 1)], io: io)
+    {s2, _} = Tui.update(:toggle_done, s)
+    refute hd(s2.tasks).done
+    # Consume the reopen's write so the recur assertions see the next one.
+    assert_received {:write, "t", _}
+
+    s = state([t("r recur:1d due:2026-09-22", 1)], io: io)
+    {_s2, _} = Tui.update(:toggle_done, s)
+    assert_received {:write, "t", ts}
+    assert List.last(ts).tags["due"] == "2026-09-23"
+    assert List.last(ts).done == false
+  end
+
+  test "x with malformed recur toasts error, no write" do
+    test_pid = self()
+    io = %{fake_io() | write: fn _, _ -> send(test_pid, :wrote) && :ok end}
+    s = state([t("r recur:bad", 1)], io: io)
+    {s2, _} = Tui.update(:toggle_done, s)
+    refute hd(s2.tasks).done
+    assert s2.status =~ "invalid recur"
+    refute_received :wrote
+  end
+
+  test "d opens confirm modal; m moves between files" do
+    s = state([t("a", 1)])
+    {s2, []} = Tui.update({:open_modal, :del}, s)
+    assert s2.mode == :input and s2.modal.action == :del
+
+    test_pid = self()
+
+    io = %{
+      fake_io()
+      | append: fn p, _ts -> send(test_pid, {:append, p}) && :ok end,
+        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+    }
+
+    s = state([t("a", 1)], io: io)
+    {s2, []} = Tui.update(:move, s)
+    assert s2.tasks == []
+    assert_received {:append, "d"}
+    assert_received {:write, "t", []}
+  end
+
+  test "selection stays clamped after delete of last row" do
+    s = state([t("a", 1), t("b", 2)], list_idx: 1)
+    {s2, []} = Tui.update({:open_modal, :del}, s)
+    {s3, []} = Tui.update({:dialog_result, :yes}, s2)
+    assert s3.list_idx == 0 and length(s3.tasks) == 1
+  end
 end
