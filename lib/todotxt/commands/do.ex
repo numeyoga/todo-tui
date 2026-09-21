@@ -3,7 +3,7 @@ defmodule TodoTxt.Commands.Do do
   `todo do ITEM#` — mark a task as done.
 
   Sets `done` and `completion_date` to today, drops the priority.
-  If the task recurs (`rec:` tag), the next occurrence is appended
+  If the task recurs (`recur:` tag), the next occurrence is appended
   and echoed after the completed task.
   """
 
@@ -27,7 +27,9 @@ defmodule TodoTxt.Commands.Do do
         {:ok, ""}
 
       new ->
-        new = %{new | line: length(tasks) + 1}
+        # Interior blank lines make `length(tasks)` smaller than the
+        # real last line number — number past the max existing line.
+        new = %{new | line: (tasks |> Enum.map(& &1.line) |> Enum.max(fn -> 0 end)) + 1}
 
         case Store.append(paths.todo, [new]) do
           :ok -> {:ok, "\n#{new.line}: #{Parser.render(new)}"}

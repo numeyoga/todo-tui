@@ -26,11 +26,70 @@ defmodule TodoTxt.Task do
   def append_text(%__MODULE__{} = t, s), do: set_text(t, String.trim(t.description <> " " <> s))
   def prepend_text(%__MODULE__{} = t, s), do: set_text(t, String.trim(s <> " " <> t.description))
 
-  # Stub — implemented in Task 9. Always returns nil; `List.first/1`
-  # keeps the inferred type `t() | nil` so `Commands.Do` type-checks
-  # the recurrence branch without warnings.
+  @doc """
+  Build the next occurrence of a recurring task (`recur:` tag).
+
+  `recur:+Nu` shifts from the completion date `today`; `recur:Nu`
+  (strict) shifts from the old `due:` date, falling back to `today`
+  when absent or invalid. Units: `d`ays, `w`eeks, `m`onths, `y`ears.
+
+  Returns a fresh task (re-parsed, `line` 0 — the caller assigns the
+  real number) with `due:` recomputed, `creation_date` = `today`, and
+  priority/projects/contexts/other tags preserved. `nil` when the task
+  has no valid `recur:` tag.
+  """
   @spec next_recurrence(t(), Date.t()) :: t() | nil
-  def next_recurrence(t, _today), do: List.first([nil, t])
+  def next_recurrence(%__MODULE__{tags: %{"recur" => r}} = t, today) do
+    with {:ok, strict, n, unit} <- parse_recur(r),
+         base when not is_nil(base) <- recur_base(t, strict, today) do
+      new_due = shift(base, n, unit)
+      desc = update_tag(t.description, "due", Date.to_string(new_due))
+
+      raw =
+        [if(t.priority, do: <<"(", t.priority, ")">>), Date.to_string(today), desc]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.join(" ")
+
+      Parser.parse(raw, 0)
+    else
+      _ -> nil
+    end
+  end
+
+  def next_recurrence(_, _), do: nil
+
+  defp parse_recur(r) when is_binary(r) do
+    case Regex.run(~r/^(\+?)(\d+)([dwmy])$/, r) do
+      [_, plus, n, u] -> {:ok, plus == "", String.to_integer(n), u}
+      _ -> :error
+    end
+  end
+
+  defp parse_recur(_), do: :error
+
+  defp recur_base(t, strict, today) do
+    if strict do
+      case t.tags["due"] && Date.from_iso8601(t.tags["due"]) do
+        {:ok, d} -> d
+        _ -> today
+      end
+    else
+      today
+    end
+  end
+
+  defp shift(d, n, "d"), do: Date.add(d, n)
+  defp shift(d, n, "w"), do: Date.add(d, n * 7)
+  defp shift(d, n, "m"), do: Date.shift(d, month: n)
+  defp shift(d, n, "y"), do: Date.shift(d, year: n)
+
+  defp update_tag(desc, key, value) do
+    re = ~r/\b#{key}:\S+/
+
+    if Regex.match?(re, desc),
+      do: Regex.replace(re, desc, "#{key}:#{value}"),
+      else: desc <> " #{key}:#{value}"
+  end
 
   defp reparse(%__MODULE__{} = t), do: Parser.parse(Parser.render(t), t.line)
 end

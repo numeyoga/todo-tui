@@ -77,6 +77,27 @@ defmodule TodoTxt.CLITest do
     assert {:error, _} = CLI.run(["do", "abc"], e)
   end
 
+  test "do on a recurring task appends the next occurrence", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "renew due:2026-09-25 recur:+1w\n")
+    assert {:ok, out} = CLI.run(["do", "1"], e)
+    assert out =~ "2: 2026-09-21 renew due:2026-09-28 recur:+1w"
+    assert {:ok, [_, new]} = Store.read(e.paths.todo)
+    assert new.tags["due"] == "2026-09-28" and not new.done
+  end
+
+  test "do recurrence gets a line number past the max, not task count", %{
+    env: e,
+    dir: dir
+  } do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "a\n\nrecur me recur:+1d\n")
+    assert {:ok, out} = CLI.run(["do", "3"], e)
+    assert out =~ "4: 2026-09-21 recur me recur:+1d due:2026-09-22"
+    {:ok, tasks} = Store.read(e.paths.todo)
+    assert List.last(tasks).tags["due"] == "2026-09-22"
+  end
+
   test "undo reopens", %{env: e, dir: dir} do
     File.mkdir_p!(dir)
     File.write!(e.paths.todo, "x 2026-09-21 task\n")

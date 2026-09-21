@@ -28,4 +28,28 @@ defmodule TodoTxt.TaskTest do
     assert t |> Task.append_text("+fam") |> Parser.render() == "call mom +fam"
     assert t |> Task.prepend_text("please") |> Parser.render() == "please call mom"
   end
+
+  test "recur +1w: next due = completion + 7d" do
+    t = Parser.parse("(A) renew +sub due:2026-09-25 recur:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["due"] == "2026-09-28"
+    assert n.priority == ?A and n.projects == ["+sub"]
+    assert n.creation_date == ~D[2026-09-21]
+  end
+
+  test "recur 1w strict: next due = old due + 7d" do
+    t = Parser.parse("renew due:2026-09-25 recur:1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["due"] == "2026-10-02"
+  end
+
+  test "recur without due: base = completion date" do
+    t = Parser.parse("water plants recur:+3d", 1)
+    assert Task.next_recurrence(t, ~D[2026-09-21]).tags["due"] == "2026-09-24"
+  end
+
+  test "no recur tag -> nil; invalid recur -> nil" do
+    assert Task.next_recurrence(Parser.parse("x", 1), ~D[2026-09-21]) == nil
+    assert Task.next_recurrence(Parser.parse("x recur:banana", 1), ~D[2026-09-21]) == nil
+  end
 end
