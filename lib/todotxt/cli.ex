@@ -23,7 +23,9 @@ defmodule TodoTxt.CLI do
 
   @commands %{
     "add" => TodoTxt.Commands.Add,
-    "a" => TodoTxt.Commands.Add
+    "a" => TodoTxt.Commands.Add,
+    "ls" => TodoTxt.Commands.List,
+    "list" => TodoTxt.Commands.List
   }
 
   def main(argv) do
