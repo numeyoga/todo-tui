@@ -2,7 +2,8 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
-  alias TermUI.Command
+  alias TodoTxt.Tui.{Keys, State}
+  alias TermUI.{Command, Event}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do
@@ -59,14 +60,41 @@ defmodule TodoTxt.Tui do
     end
   end
 
-  # --- Elm callbacks (T5+ complète ; squelette autonome, sans State) ---
+  # --- Elm callbacks ---
   def init(opts) do
     env = Keyword.fetch!(opts, :env)
-    {:ok, %{env: env}, [Command.interval(2_000, :tick)]}
+    # Seed mtimes : sinon le 1er :tick (2 s) déclenche un reload parasite.
+    state = State.new(env) |> State.refresh_mtimes()
+    {:ok, state, [Command.interval(2_000, :tick)]}
   end
 
+  def event_to_msg(%Event.Resize{width: w, height: h}, _s), do: {:msg, {:resize, w, h}}
+  def event_to_msg(%Event.Key{} = ev, state), do: Keys.msg(ev, state.mode) |> wrap()
   def event_to_msg(_, _), do: :ignore
-  def update(_, state), do: {state, []}
+
+  defp wrap(:ignore), do: :ignore
+  defp wrap(msg), do: {:msg, msg}
+
+  def update({:resize, w, h}, s), do: {%{s | width: w, height: h}, []}
+  def update({:nav, d}, s), do: {State.move_cursor(s, d), []}
+
+  def update(:focus_next, s),
+    do: {%{s | focus: if(s.focus == :sidebar, do: :list, else: :sidebar)}, []}
+
+  def update(:focus_sidebar, s), do: {%{s | focus: :sidebar}, []}
+  def update(:focus_list, s), do: {%{s | focus: :list}, []}
+
+  def update(:activate, %{focus: :sidebar} = s),
+    do: {State.activate_sidebar(s) |> Map.put(:focus, :list), []}
+
+  def update(:activate, s), do: {s, []}
+
+  def update(:clear_filter, s), do: {%{s | filter_terms: [], list_idx: 0}, []}
+  def update(:quit, s), do: {s, [Command.quit()]}
+
+  # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
+  def update(_, s), do: {s, []}
+
   def view(_), do: text("todo --tui")
   def handle_info(msg, state), do: update(msg, state)
 end
