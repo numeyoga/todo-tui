@@ -44,4 +44,34 @@ defmodule TodoTxt.Query do
         end
     end)
   end
+
+  @doc "Parses the task's `due:` tag; nil when absent or invalid."
+  def due_date(t) do
+    case t.tags["due"] && Date.from_iso8601(t.tags["due"]) do
+      {:ok, d} -> d
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Classifies a task's due date relative to `today`:
+  `:overdue`, `:today`, `:week` (within 7 days), `:later`,
+  or `:none` (no valid `due:` tag).
+  """
+  def due_bucket(t, today) do
+    case due_date(t) do
+      nil ->
+        :none
+
+      d ->
+        diff = Date.diff(d, today)
+
+        cond do
+          diff < 0 -> :overdue
+          diff == 0 -> :today
+          diff <= 7 -> :week
+          true -> :later
+        end
+    end
+  end
 end

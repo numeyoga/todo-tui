@@ -46,7 +46,9 @@ defmodule TodoTxt.CLI do
     "listcon" => {TodoTxt.Commands.ListMeta, "con"},
     "lsc" => {TodoTxt.Commands.ListMeta, "con"},
     "listpri" => {TodoTxt.Commands.ListMeta, "pri"},
-    "lspr" => {TodoTxt.Commands.ListMeta, "pri"}
+    "lspr" => {TodoTxt.Commands.ListMeta, "pri"},
+    "due" => TodoTxt.Commands.Due,
+    "agenda" => TodoTxt.Commands.Agenda
   }
 
   def main(argv) do

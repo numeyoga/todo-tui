@@ -182,4 +182,32 @@ defmodule TodoTxt.CLITest do
     {:ok, out} = CLI.run(["--plain", "listpri", "A"], e)
     assert out =~ "a +p1"
   end
+
+  test "due buckets", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+
+    File.write!(
+      e.paths.todo,
+      "old due:2026-09-19\nnow due:2026-09-21\nsoon due:2026-09-25\nfar due:2026-10-15\nx done due:2026-09-19\n"
+    )
+
+    {:ok, out} = CLI.run(["--plain", "due"], e)
+    [overdue | _] = String.split(out, "\n\n")
+    assert overdue =~ "old" and overdue =~ "OVERDUE"
+    assert out =~ "TODAY" and out =~ "THIS WEEK" and out =~ "LATER"
+    # done tasks excluded
+    refute out =~ "x done"
+  end
+
+  test "agenda lists next 14 days by date", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+
+    File.write!(
+      e.paths.todo,
+      "a due:2026-09-22\nb due:2026-09-22\nc t:2026-09-25 due:2026-09-26\n"
+    )
+
+    {:ok, out} = CLI.run(["--plain", "agenda"], e)
+    assert out =~ "2026-09-22" and out =~ "a due" and out =~ "b due"
+  end
 end
