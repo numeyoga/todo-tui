@@ -6,10 +6,10 @@ defmodule TodoTxt.Commands.Archive do
   todo.txt is rewritten with only the open tasks.
   """
 
-  alias TodoTxt.Store
+  alias TodoTxt.{Ops, Store}
 
   def run(_args, %{tasks: tasks, paths: paths}) do
-    {done, open} = Enum.split_with(tasks, & &1.done)
+    {open, done} = Ops.archive(tasks)
 
     with :ok <- append_done(paths.done, done),
          :ok <- Store.write(paths.todo, open) do

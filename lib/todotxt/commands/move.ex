@@ -5,7 +5,7 @@ defmodule TodoTxt.Commands.Move do
   is appended at the end of the destination file.
   """
 
-  alias TodoTxt.{Commands.Helpers, Store}
+  alias TodoTxt.{Commands.Helpers, Ops, Store}
 
   def run([n, "done"], %{tasks: tasks, paths: paths}) do
     move(tasks, n, paths.todo, paths.done, "done")
@@ -22,7 +22,8 @@ defmodule TodoTxt.Commands.Move do
     # in the source — a duplicate beats a loss (same order as archive).
     with {:ok, t} <- Helpers.fetch(tasks, n),
          :ok <- Store.append(dest, [t]),
-         :ok <- Store.write(src, Enum.reject(tasks, &(&1.line == t.line))) do
+         {:ok, ts} <- Ops.delete(tasks, t),
+         :ok <- Store.write(src, ts) do
       {:ok, "#{t.line}: moved to #{name}"}
     end
   end

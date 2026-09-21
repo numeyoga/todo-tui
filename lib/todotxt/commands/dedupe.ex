@@ -6,10 +6,10 @@ defmodule TodoTxt.Commands.Dedupe do
   todo.txt is rewritten in place.
   """
 
-  alias TodoTxt.Store
+  alias TodoTxt.{Ops, Store}
 
   def run(_args, %{tasks: tasks, paths: paths}) do
-    uniq = Enum.uniq_by(tasks, & &1.raw)
+    uniq = Ops.dedupe(tasks)
     removed = length(tasks) - length(uniq)
 
     with :ok <- Store.write(paths.todo, uniq) do

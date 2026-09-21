@@ -7,28 +7,10 @@ defmodule TodoTxt.Commands.Agenda do
   Overdue and done tasks are excluded.
   """
 
-  alias TodoTxt.{Format, Query}
-
-  @days 14
+  alias TodoTxt.{Format, Ops, Query}
 
   def run(_, %{tasks: tasks, today: today, opts: opts}) do
-    horizon = Date.add(today, @days)
-    open = Enum.reject(tasks, & &1.done)
-
-    in_range? = fn d ->
-      not is_nil(d) and Date.compare(d, today) != :lt and Date.compare(d, horizon) != :gt
-    end
-
-    groups =
-      open
-      |> Enum.group_by(&Query.due_date/1)
-      |> Enum.reject(fn {d, _} -> not in_range?.(d) end)
-      |> Enum.sort_by(fn {d, _} -> d end, Date)
-
-    thresholds =
-      open
-      |> Enum.filter(&in_range?.(threshold_date(&1)))
-      |> Enum.sort_by(& &1.line)
+    {groups, thresholds} = Ops.agenda(tasks, today)
 
     if opts.json do
       dates =
@@ -51,13 +33,6 @@ defmodule TodoTxt.Commands.Agenda do
           else: sections ++ ["THRESHOLDS:\n" <> Format.tasks(thresholds, opts)]
 
       {:ok, Enum.join(sections, "\n\n")}
-    end
-  end
-
-  defp threshold_date(t) do
-    case t.tags["t"] && Date.from_iso8601(t.tags["t"]) do
-      {:ok, d} -> d
-      _ -> nil
     end
   end
 end

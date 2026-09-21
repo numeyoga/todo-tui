@@ -7,49 +7,30 @@ defmodule TodoTxt.Commands.Do do
   and echoed after the completed task.
   """
 
-  alias TodoTxt.{Commands.Helpers, Parser, Store, Task}
+  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store, Task}
 
   def run([n | _], %{tasks: tasks, paths: paths, today: today}) do
-    done = fn t -> Task.complete(t, today) end
-
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         :ok <- valid_recur(t, today),
-         :ok <- Store.write(paths.todo, Helpers.replace(tasks, done.(t))),
-         {:ok, recur_note} <- append_recurrence(t, tasks, paths, today) do
-      {:ok, "#{t.line}: #{Parser.render(done.(t))}#{recur_note}"}
+         {:ok, tasks2, recur} <- Ops.complete(tasks, t, today),
+         :ok <- Store.write(paths.todo, tasks2),
+         {:ok, note} <- append_recurrence(recur, tasks, paths) do
+      done = Task.complete(t, today)
+      {:ok, "#{t.line}: #{Parser.render(done)}#{note}"}
     end
   end
 
   def run(_, _), do: {:usage, "todo do ITEM#"}
 
-  # A present but malformed recur: tag is an explicit error — the task
-  # is left untouched so the user can fix the tag.
-  defp valid_recur(t, today) do
-    case t.tags["recur"] do
-      nil ->
-        :ok
+  defp append_recurrence(nil, _tasks, _paths), do: {:ok, ""}
 
-      v ->
-        if Task.next_recurrence(t, today),
-          do: :ok,
-          else: {:error, "invalid recur: #{inspect(v)} on task #{t.line}"}
-    end
-  end
+  defp append_recurrence(new, tasks, paths) do
+    # Interior blank lines make `length(tasks)` smaller than the
+    # real last line number — number past the max existing line.
+    new = %{new | line: Ops.next_line(tasks)}
 
-  defp append_recurrence(t, tasks, paths, today) do
-    case Task.next_recurrence(t, today) do
-      nil ->
-        {:ok, ""}
-
-      new ->
-        # Interior blank lines make `length(tasks)` smaller than the
-        # real last line number — number past the max existing line.
-        new = %{new | line: (tasks |> Enum.map(& &1.line) |> Enum.max(fn -> 0 end)) + 1}
-
-        case Store.append(paths.todo, [new]) do
-          :ok -> {:ok, "\n#{new.line}: #{Parser.render(new)}"}
-          {:error, m} -> {:error, m}
-        end
+    case Store.append(paths.todo, [new]) do
+      :ok -> {:ok, "\n#{new.line}: #{Parser.render(new)}"}
+      {:error, m} -> {:error, m}
     end
   end
 end

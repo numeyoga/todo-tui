@@ -3,12 +3,13 @@ defmodule TodoTxt.Commands.Append do
   `todo append ITEM# TEXT...` — append text to a task's description.
   """
 
-  alias TodoTxt.{Commands.Helpers, Parser, Store, Task}
+  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store}
 
   def run([n | [_ | _] = words], %{tasks: tasks, paths: paths}) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         new = Task.append_text(t, Enum.join(words, " ")),
-         :ok <- Store.write(paths.todo, Helpers.replace(tasks, new)) do
+         {:ok, ts} <- Ops.append_text(tasks, t, Enum.join(words, " ")),
+         :ok <- Store.write(paths.todo, ts) do
+      new = Enum.find(ts, &(&1.line == t.line))
       {:ok, "#{t.line}: #{Parser.render(new)}"}
     end
   end
