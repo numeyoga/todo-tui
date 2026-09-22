@@ -300,11 +300,11 @@ Limite connue : la détection repose **uniquement** sur le mtime ; une
 écriture qui conserve le mtime passe inaperçue. `r` force alors le
 rechargement.
 
-`E` quitte le TUI, ouvre `todo.txt` dans `$EDITOR`, puis relance le TUI
-à la fermeture de l'éditeur — pratique pour les retouches en vrac que
-`e` ne couvre pas. Si `$EDITOR` n'est pas défini, si l'exécutable est
-introuvable ou s'il échoue, l'erreur s'affiche sur stderr et le TUI ne
-redémarre pas.
+`E` quitte le TUI, ouvre `todo.txt` dans `$VISUAL`/`$EDITOR` (défaut
+`vi`), puis relance le TUI à la fermeture de l'éditeur — pratique pour
+les retouches en vrac que `e` ne couvre pas. Si l'exécutable est
+introuvable ou si l'éditeur échoue, l'erreur s'affiche sur stderr et le
+TUI ne redémarre pas.
 
 ---
 
@@ -495,8 +495,11 @@ fi
 - **Écritures atomiques** : les réécritures passent par un fichier
   temporaire + renommage ; un `todo.txt` symboliquement lié est remplacé
   par un fichier régulier.
-- **`EDITOR`** doit être un simple nom d'exécutable (`vim`, `nano`) ;
-  les arguments (`"code --wait"`) ne sont pas découpés.
+- **`VISUAL` / `EDITOR`** : `VISUAL` l'emporte sur `EDITOR`, défaut
+  `vi`. Les arguments sont supportés (`EDITOR="code --wait"`,
+  `emacs -nw`…) ; l'éditeur s'exécute avec le vrai terminal — vim et
+  nano fonctionnent. Un éditeur qui rend la main immédiatement
+  (`code` sans `--wait`) relance le TUI aussitôt.
 - **Pas de transaction multi-fichiers** : si la seconde écriture d'un
   `mv`/`archive` échoue, la tâche peut exister en double — l'ordre des
   écritures garantit qu'elle n'est jamais perdue.

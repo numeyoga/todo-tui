@@ -2,7 +2,7 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
-  alias TodoTxt.{Ops, Task}
+  alias TodoTxt.{Editor, Ops, Task}
   alias TodoTxt.Tui.{Keys, Modal, State, View}
   alias TermUI.{Command, Event}
   alias TermUI.Widgets.TextInput
@@ -57,22 +57,9 @@ defmodule TodoTxt.Tui do
     end
   end
 
-  defp edit_external(env) do
-    editor = System.get_env("EDITOR")
-
-    if is_nil(editor) do
-      {:error, "$EDITOR not set"}
-    else
-      try do
-        case System.cmd(editor, [env.paths.todo], into: IO.stream(:stdio, :line)) do
-          {_, 0} -> :ok
-          {_, code} -> {:error, "editor exited #{code}"}
-        end
-      rescue
-        ErlangError -> {:error, "editor not found: #{editor}"}
-      end
-    end
-  end
+  # Le runtime est déjà quitté à ce point (terminal restauré) : le port
+  # :nouse_stdio d'Editor donne au fils le vrai tty. VISUAL > EDITOR > vi.
+  defp edit_external(env), do: Editor.open(env.paths.todo)
 
   # --- Elm callbacks ---
   def init(opts) do

@@ -264,12 +264,16 @@ defmodule TodoTxt.CLITest do
   end
 
   test "edit runs $EDITOR and reports exit status", %{env: e} do
-    old = System.get_env("EDITOR")
+    old_editor = System.get_env("EDITOR")
+    old_visual = System.get_env("VISUAL")
 
     on_exit(fn ->
-      if old, do: System.put_env("EDITOR", old), else: System.delete_env("EDITOR")
+      if old_editor, do: System.put_env("EDITOR", old_editor), else: System.delete_env("EDITOR")
+      if old_visual, do: System.put_env("VISUAL", old_visual), else: System.delete_env("VISUAL")
     end)
 
+    # VISUAL a la priorité sur EDITOR — le neutraliser pour isoler le test.
+    System.delete_env("VISUAL")
     System.put_env("EDITOR", "true")
     assert {:ok, out} = CLI.run(["edit"], e)
     assert out =~ "edited"

@@ -399,6 +399,8 @@ defmodule TodoTxt.TuiTest do
   test "relaunch after $EDITOR re-reads both files into env" do
     test_pid = self()
     old_editor = System.get_env("EDITOR")
+    old_visual = System.get_env("VISUAL")
+    System.delete_env("VISUAL")
     System.put_env("EDITOR", "true")
 
     runner = fn env ->
@@ -430,6 +432,10 @@ defmodule TodoTxt.TuiTest do
       if old_editor,
         do: System.put_env("EDITOR", old_editor),
         else: System.delete_env("EDITOR")
+
+      if old_visual,
+        do: System.put_env("VISUAL", old_visual),
+        else: System.delete_env("VISUAL")
     end
   end
 

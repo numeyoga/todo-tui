@@ -35,7 +35,7 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS..
 | `append\|app N TEXT...` | Append text to task N |
 | `prepend\|prep N TEXT...` | Prepend text to task N |
 | `replace N TEXT...` | Replace task N's text |
-| `edit` | Open `todo.txt` in `$EDITOR` |
+| `edit` | Open `todo.txt` in `$VISUAL`/`$EDITOR` |
 
 ### Lifecycle
 
@@ -123,7 +123,7 @@ resets filters and returns to Todo.
 | `m` | Move task between `todo.txt` and `done.txt` |
 | `R` | Archive done tasks (confirmation) |
 | `/` | Filter: space-separated AND terms, empty input clears |
-| `E` | Quit, edit `todo.txt` in `$EDITOR`, relaunch the TUI |
+| `E` | Quit, edit `todo.txt` in `$VISUAL`/`$EDITOR`, relaunch the TUI |
 | `r` | Reload the files now |
 | `?`, `q` | Help, quit |
 
@@ -156,7 +156,8 @@ Paths are resolved in this order (first wins):
 | `TODOTXT_DONE_FILE` | Explicit path to `done.txt` |
 | `NO_COLOR` | When set (any value), disables colors |
 | `TERM` | `dumb`/unset also disables colors |
-| `EDITOR` | Editor for `todo edit` |
+| `VISUAL` | Editor for `todo edit` and the TUI's `E` key (wins over `EDITOR`) |
+| `EDITOR` | Editor for `todo edit` and `E` — may include args, e.g. `code --wait` (default `vi`) |
 
 ## Extensions
 

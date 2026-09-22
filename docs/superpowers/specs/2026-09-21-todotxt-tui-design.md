@@ -198,8 +198,9 @@ Mécanisme retenu — *quit → edit → relaunch* :
 1. `update` marque `edit_external: true` et renvoie `Command.quit()`
 2. `Tui.run/1` récupère la raison de sortie (flag ETS posé avant quit —
    détail d'implémentation à valider sur l'API exacte du runtime)
-3. `System.cmd(editor, [paths.todo], into: IO.stream(:stdio, :line))`
-   dans le terminal restauré ; `$EDITOR` absent → erreur `todo: $EDITOR not set`
+3. `TodoTxt.Editor.open(paths.todo)` dans le terminal restauré —
+   amendement 2026-09-22 : port `:nouse_stdio` (vrai tty pour vim/nano),
+   `VISUAL` > `EDITOR` > `vi`, arguments supportés (`code --wait`)
 4. Relance `TermUI.Runtime.run(root: Tui)` avec l'état restauré
    (view/filtres/sélection si encore valides)
 

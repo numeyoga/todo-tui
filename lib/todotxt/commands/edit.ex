@@ -1,21 +1,15 @@
 defmodule TodoTxt.Commands.Edit do
   @moduledoc """
-  `todo edit` — open todo.txt in `$EDITOR` (defaults to `vi`).
+  `todo edit` — open todo.txt in `$VISUAL`/`$EDITOR` (defaults to `vi`).
 
-  The editor inherits the terminal. A missing editor binary or a
-  non-zero exit status is reported as an error.
+  The editor inherits the terminal (see `TodoTxt.Editor`); a missing
+  binary or a non-zero exit status is reported as an error.
   """
 
   def run(_args, %{paths: paths}) do
-    editor = System.get_env("EDITOR") || "vi"
-
-    try do
-      case System.cmd(editor, [paths.todo], into: IO.stream(:stdio, :line)) do
-        {_, 0} -> {:ok, "edited #{paths.todo}"}
-        {_, code} -> {:error, "editor exited #{code}"}
-      end
-    rescue
-      ErlangError -> {:error, "editor not found: #{editor}"}
+    case TodoTxt.Editor.open(paths.todo) do
+      :ok -> {:ok, "edited #{paths.todo}"}
+      {:error, m} -> {:error, m}
     end
   end
 end
