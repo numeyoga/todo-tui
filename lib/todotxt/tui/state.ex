@@ -20,6 +20,7 @@ defmodule TodoTxt.Tui.State do
             width: 80,
             height: 24,
             caller: nil,
+            plain: false,
             io: nil
 
   def new(env) do
@@ -29,6 +30,7 @@ defmodule TodoTxt.Tui.State do
       tasks: env.tasks || [],
       done_tasks: env.done_tasks || [],
       caller: env.caller,
+      plain: env[:plain] || false,
       io: env.io,
       mtimes: env[:mtimes] || %{}
     }

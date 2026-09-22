@@ -91,8 +91,8 @@ colored red/yellow/cyan.
 `todo --tui` opens a full-screen interactive UI. It is a mode, not a
 command — `todo --tui ls` is a usage error. `-f`/`-d` and the usual
 file resolution apply; an unreadable `todo.txt` fails before the UI
-starts. (`--plain` and `--json` are accepted but have no effect inside
-the TUI.)
+starts. `--plain` renders the TUI monochrome (attributes only, no
+colors); `--json` is accepted but has no effect inside the TUI.
 
 Three panes plus a statusline:
 
@@ -154,7 +154,7 @@ Paths are resolved in this order (first wins):
 | `TODOTXT_DIR` | Directory holding `todo.txt`, `done.txt`, `report.txt` |
 | `TODOTXT_TODO_FILE` | Explicit path to `todo.txt` |
 | `TODOTXT_DONE_FILE` | Explicit path to `done.txt` |
-| `NO_COLOR` | When set (any value), disables colors |
+| `NO_COLOR` | When set (any value), disables colors (TUI included) |
 | `TERM` | `dumb`/unset also disables colors |
 | `VISUAL` | Editor for `todo edit` and the TUI's `E` key (wins over `EDITOR`) |
 | `EDITOR` | Editor for `todo edit` and `E` — may include args, e.g. `code --wait` (default `vi`) |

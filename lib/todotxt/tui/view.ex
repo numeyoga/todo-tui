@@ -15,6 +15,18 @@ defmodule TodoTxt.Tui.View do
     ?B => Style.new(fg: :yellow),
     ?C => Style.new(fg: :cyan)
   }
+  # Palette monochrome (state.plain) : attributs seuls, jamais de fg/bg.
+  @dim_plain Style.new(attrs: [:dim])
+  @pri_plain Style.new(attrs: [:bold])
+
+  defp dim(%{plain: true}), do: @dim_plain
+  defp dim(_), do: @dim
+
+  defp pri(%{plain: true}, _p), do: @pri_plain
+  defp pri(_, p), do: @pri[p]
+
+  defp accent(%{plain: true}), do: nil
+  defp accent(_), do: Style.new(fg: :cyan)
 
   def render(s) do
     stack(:vertical, [
@@ -48,7 +60,7 @@ defmodule TodoTxt.Tui.View do
       :vertical,
       Enum.with_index(entries, fn
         {:header, label}, _ ->
-          text(" " <> label, @dim)
+          text(" " <> label, dim(s))
 
         {:all, label}, i ->
           item(s, i, label <> count_suffix(s))
@@ -79,7 +91,7 @@ defmodule TodoTxt.Tui.View do
     stack(:vertical, render_rows(s, rows, 0))
   end
 
-  defp render_rows(_s, [], _ti), do: [text("  (vide)", @dim)]
+  defp render_rows(s, [], _ti), do: [text("  (vide)", dim(s))]
 
   defp render_rows(s, rows, ti) do
     {nodes, _ti} =
@@ -93,8 +105,8 @@ defmodule TodoTxt.Tui.View do
           style =
             cond do
               s.focus == :list and s.list_idx == ti -> @sel
-              t.done -> @dim
-              Map.has_key?(@pri, t.priority) -> @pri[t.priority]
+              t.done -> dim(s)
+              Map.has_key?(@pri, t.priority) -> pri(s, t.priority)
               true -> nil
             end
 
@@ -107,7 +119,7 @@ defmodule TodoTxt.Tui.View do
   defp detail(s) do
     case State.selected_task(s) do
       nil ->
-        text("  —", @dim)
+        text("  —", dim(s))
 
       t ->
         fields = [
@@ -134,7 +146,7 @@ defmodule TodoTxt.Tui.View do
   # visible while the prompt + input take over the bottom line.
   defp statusline(%{mode: :input, modal: %{widget_mod: TextInput, widget: w, prompt: p}} = s) do
     stack(:horizontal, [
-      text(" " <> p, Style.new(fg: :cyan)),
+      text(" " <> p, accent(s)),
       TextInput.render(w, %{width: max(s.width - String.length(p) - 2, 10), height: 1})
     ])
   end
@@ -148,7 +160,7 @@ defmodule TodoTxt.Tui.View do
 
     text(
       " #{view}#{filters}#{status}  ·  a:add e:edit x:do d:del p:pri m:move /:filter E:$EDITOR ?:help q:quit",
-      @dim
+      dim(s)
     )
   end
 end

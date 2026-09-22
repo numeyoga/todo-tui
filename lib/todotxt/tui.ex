@@ -2,7 +2,7 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
-  alias TodoTxt.{Editor, Ops, Task}
+  alias TodoTxt.{Editor, Format, Ops, Task}
   alias TodoTxt.Tui.{Keys, Modal, State, View}
   alias TermUI.{Command, Event}
   alias TermUI.Widgets.TextInput
@@ -18,6 +18,9 @@ defmodule TodoTxt.Tui do
         append: &TodoTxt.Store.append/2,
         stat: &File.stat/1
       })
+      # --plain / COLORS=off (déjà mergé dans env.opts) + NO_COLOR/TERM
+      # → rendu monochrome (attributs seuls, aucune couleur).
+      |> Map.put_new(:plain, not Format.colors_enabled?(env[:opts] || %{}))
       |> Map.put(:caller, self())
 
     # TermUI.Runtime.run/1 returns :ok | {:error, term}; the test seam may

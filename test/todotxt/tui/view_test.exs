@@ -39,6 +39,18 @@ defmodule TodoTxt.Tui.ViewTest do
 
   defp texts(_), do: []
 
+  defp text_nodes(%RenderNode{type: :text} = n), do: [n]
+
+  defp text_nodes(%RenderNode{children: children}) when is_list(children),
+    do:
+      Enum.flat_map(children, fn
+        {node, _constraint} -> text_nodes(node)
+        %RenderNode{} = node -> text_nodes(node)
+        _ -> []
+      end)
+
+  defp text_nodes(_), do: []
+
   test "root is a vertical stack: body fill + statusline" do
     %RenderNode{type: :stack, direction: :vertical, children: [{body, _}, {status, _}]} =
       View.render(st([t("a", 1)]))
@@ -63,5 +75,35 @@ defmodule TodoTxt.Tui.ViewTest do
 
     s = st([t("a", 1)], filter_terms: ["+p"])
     assert Enum.any?(texts(View.render(s)), &String.contains?(&1, "+p"))
+  end
+
+  test "colored mode: priority rows carry fg colors" do
+    nodes = text_nodes(View.render(st([t("(A) a", 1)], focus: :sidebar)))
+    row = Enum.find(nodes, &(&1.content == " 1: (A) a"))
+    assert row.style.fg == :red
+  end
+
+  test "plain mode: no fg colors — priorities bold, done dimmed, selection reverse" do
+    s =
+      st([t("(A) a", 1), t("x 2026-09-21 done", 2), t("c", 3)],
+        plain: true,
+        focus: :list,
+        list_idx: 2
+      )
+
+    nodes = text_nodes(View.render(s))
+    by = fn prefix -> Enum.find(nodes, &String.starts_with?(&1.content, prefix)) end
+
+    pri = by.(" 1: (A) a")
+    assert pri.style.fg == nil
+    assert :bold in pri.style.attrs
+
+    done = by.(" 2: x 2026-09-21 done")
+    assert done.style.fg == nil
+    assert :dim in done.style.attrs
+
+    sel = by.(" 3: c")
+    assert sel.style.fg == nil
+    assert :reverse in sel.style.attrs
   end
 end

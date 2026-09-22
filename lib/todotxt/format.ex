@@ -23,10 +23,17 @@ defmodule TodoTxt.Format do
   @doc "Pretty-printed JSON array of `task_map/1` maps."
   def tasks_json(tasks), do: Jason.encode!(Enum.map(tasks, &task_map/1), pretty: true)
 
+  @doc """
+  Whether ANSI colors are wanted: off when `opts[:plain]`, `NO_COLOR`
+  is set, or `TERM` is unset/`dumb`. Shared with the TUI palette.
+  """
+  def colors_enabled?(opts) do
+    !opts[:plain] and is_nil(System.get_env("NO_COLOR")) and
+      System.get_env("TERM") not in [nil, "dumb"]
+  end
+
   def tasks(tasks, opts) do
-    color =
-      not opts.plain and is_nil(System.get_env("NO_COLOR")) and
-        System.get_env("TERM") not in [nil, "dumb"]
+    color = colors_enabled?(opts)
 
     Enum.map_join(tasks, "\n", fn t ->
       line = "#{t.line}: #{t.raw}"

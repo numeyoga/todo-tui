@@ -232,6 +232,8 @@ jusqu'à quit normal → `{:ok, nil}` pour `CLI`.
   sans keybinding), `move` par drag & drop
 - Édition multi-ligne, undo global (Ctrl-Z), macros
 - Souris au-delà de la sélection/clic (scroll pane à pane si gratuit)
-- Thèmes multiples : `--plain` → rendu monochrome ; sinon thème unique
+- Thèmes multiples : thème unique. (`--plain` → rendu monochrome :
+  implémenté 2026-09-22 — attributs gras/estompé/inversé, aucune
+  couleur ; `--plain`, `COLORS=off`, `NO_COLOR`, `TERM=dumb`)
 - Backend SSH term_ui, exécution dans IEx
 - Synchronisation multi-instances au-delà du watch mtime

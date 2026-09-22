@@ -222,8 +222,8 @@ commande — `todo --tui ls` est une erreur d'usage
 (`usage: --tui takes no command`). Les fichiers sont résolus comme
 d'habitude (`-f`, `-d`, variables d'environnement, config) ; si
 `todo.txt` est illisible, l'erreur s'affiche avant le lancement de
-l'interface. Les flags `--plain` et `--json` sont acceptés mais sans
-effet dans le TUI.
+l'interface. `--plain` rend le TUI en monochrome (attributs seuls,
+aucune couleur) ; `--json` est accepté mais sans effet dans le TUI.
 
 ### Disposition
 
@@ -395,7 +395,8 @@ LS_SORT=line
 
 Priorités `(A)` rouge, `(B)` jaune, `(C)` cyan ; tâches faites
 estompées. Désactivées par `--plain`, `COLORS=off`, `NO_COLOR` (toute
-valeur) ou `TERM=dumb`/non défini.
+valeur) ou `TERM=dumb`/non défini — dans le TUI, le rendu devient
+monochrome (attributs gras/estompé/vidéo inversée, sans couleurs).
 
 ---
 
