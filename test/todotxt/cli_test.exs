@@ -163,7 +163,15 @@ defmodule TodoTxt.CLITest do
     assert {:ok, [t]} = Store.read(e.paths.todo)
     assert t.raw == "two"
     assert {:ok, [d]} = Store.read(e.paths.done)
-    assert d.raw == "one"
+    assert d.raw == "x 2026-09-21 one" and d.done
+  end
+
+  test "mv done completes a prioritized task (priority → pri:)", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "(A) one\n")
+    {:ok, _} = CLI.run(["mv", "1", "done"], e)
+    assert {:ok, [d]} = Store.read(e.paths.done)
+    assert d.raw == "x 2026-09-21 one pri:A"
   end
 
   test "mv moves task back to todo.txt", %{env: e, dir: dir} do
@@ -173,7 +181,16 @@ defmodule TodoTxt.CLITest do
     {:ok, _} = CLI.run(["move", "1", "todo"], e)
     assert {:ok, []} = Store.read(e.paths.done)
     assert {:ok, [_, t]} = Store.read(e.paths.todo)
-    assert t.raw == "x 2026-09-20 old"
+    assert t.raw == "old" and not t.done
+  end
+
+  test "mv todo reopens and restores a pri: priority", %{env: e, dir: dir} do
+    File.mkdir_p!(dir)
+    File.write!(e.paths.todo, "")
+    File.write!(e.paths.done, "x 2026-09-20 old pri:C\n")
+    {:ok, _} = CLI.run(["mv", "1", "todo"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "(C) old"
   end
 
   test "mv rejects a bad destination", %{env: e, dir: dir} do
@@ -195,6 +212,14 @@ defmodule TodoTxt.CLITest do
     {:ok, _} = CLI.run(["pri", "1", "A"], e)
     {:ok, out} = CLI.run(["--plain", "listpri", "A"], e)
     assert out =~ "a +p1"
+  end
+
+  test "listpri --json emits the task objects", %{env: e} do
+    File.write!(e.paths.todo, "(A) a +p1\nb\n(A) c\n")
+    {:ok, out} = CLI.run(["--json", "listpri", "A"], e)
+    decoded = Jason.decode!(out)
+    assert Enum.map(decoded, & &1["description"]) == ["a +p1", "c"]
+    assert Enum.all?(decoded, &(&1["priority"] == "A"))
   end
 
   test "due buckets", %{env: e, dir: dir} do
@@ -422,12 +447,39 @@ defmodule TodoTxt.CLITest do
     assert File.read!(e.paths.todo) == "task recur:banana\n"
   end
 
-  test "do recur +1w shifts t: along with due:", %{env: e} do
+  test "do recur +1w shifts t: along with due:, preserving the offset", %{env: e} do
+    # today = 2026-09-21 → due: 2026-09-28 ; t: garde l'écart d'1 jour → 2026-09-27
     File.write!(e.paths.todo, "renew t:2026-09-24 due:2026-09-25 recur:+1w\n")
     assert {:ok, out} = CLI.run(["do", "1"], e)
-    assert out =~ "t:2026-09-28" and out =~ "due:2026-09-28"
+    assert out =~ "t:2026-09-27" and out =~ "due:2026-09-28"
+    {:ok, [_, new]} = Store.read(e.paths.todo)
+    assert new.tags["t"] == "2026-09-27" and new.tags["due"] == "2026-09-28"
+  end
+
+  test "do recur +1w with t: but no due: shifts t: from today", %{env: e} do
+    File.write!(e.paths.todo, "renew t:2026-09-24 recur:+1w\n")
+    assert {:ok, _} = CLI.run(["do", "1"], e)
     {:ok, [_, new]} = Store.read(e.paths.todo)
     assert new.tags["t"] == "2026-09-28" and new.tags["due"] == "2026-09-28"
+  end
+
+  test "do moves the priority into pri: and undo restores it", %{env: e} do
+    File.write!(e.paths.todo, "(A) tâche\n")
+    assert {:ok, "1: x 2026-09-21 tâche pri:A"} = CLI.run(["do", "1"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "x 2026-09-21 tâche pri:A" and t.priority == nil
+    assert {:ok, "1: (A) tâche"} = CLI.run(["undo", "1"], e)
+    assert {:ok, [t]} = Store.read(e.paths.todo)
+    assert t.raw == "(A) tâche" and t.priority == ?A and t.tags["pri"] == nil
+  end
+
+  test "do on a prioritized recurring task keeps the priority on the next occurrence",
+       %{env: e} do
+    File.write!(e.paths.todo, "(B) renew due:2026-09-25 recur:+1w\n")
+    assert {:ok, _} = CLI.run(["do", "1"], e)
+    assert {:ok, [done, new]} = Store.read(e.paths.todo)
+    assert done.raw == "x 2026-09-21 renew due:2026-09-25 recur:+1w pri:B"
+    assert new.raw == "(B) 2026-09-21 renew due:2026-09-28 recur:+1w"
   end
 
   test "do recur strict 1w preserves the t:↔due: offset", %{env: e} do

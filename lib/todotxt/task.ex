@@ -20,11 +20,34 @@ defmodule TodoTxt.Task do
 
   alias TodoTxt.Parser
 
+  @doc """
+  Mark `t` done on `today`. A priority is not lost: it moves into a
+  `pri:X` tag (todo.txt convention) so `uncomplete/1` can restore it.
+  """
   def complete(%__MODULE__{} = t, today) do
-    reparse(%{t | done: true, completion_date: today, priority: nil})
+    desc =
+      if t.priority, do: update_tag(t.description, "pri", <<t.priority>>), else: t.description
+
+    reparse(%{t | done: true, completion_date: today, priority: nil, description: desc})
   end
 
-  def uncomplete(%__MODULE__{} = t), do: reparse(%{t | done: false, completion_date: nil})
+  @doc "Reopen `t`; a `pri:X` tag (A-Z) is turned back into the priority."
+  def uncomplete(%__MODULE__{} = t) do
+    case t.tags["pri"] do
+      <<p>> when p in ?A..?Z ->
+        reparse(%{
+          t
+          | done: false,
+            completion_date: nil,
+            priority: p,
+            description: remove_tag(t.description, "pri")
+        })
+
+      _ ->
+        reparse(%{t | done: false, completion_date: nil})
+    end
+  end
+
   def set_priority(%__MODULE__{} = t, p) when p in ?A..?Z, do: reparse(%{t | priority: p})
   def set_priority(%__MODULE__{} = t, nil), do: reparse(%{t | priority: nil})
   def set_text(%__MODULE__{} = t, s), do: reparse(%{t | description: s})
@@ -41,9 +64,11 @@ defmodule TodoTxt.Task do
   Returns a fresh task (re-parsed, `line` 0 — the caller assigns the
   real number) with `due:` recomputed, `creation_date` = `today`, and
   priority/projects/contexts/other tags preserved. A `t:` threshold
-  is shifted by the same recurrence: from its own date in strict
-  mode (preserving the `t:`↔`due:` offset), from `today` otherwise.
-  An unparseable `t:` is dropped. `nil` when the task has no valid
+  keeps its offset to `due:`: in strict mode it is shifted by the
+  same recurrence from its own date; otherwise the new `t:` is the
+  new `due:` minus the old `due:`−`t:` gap (falling back to shifting
+  from `today` when the old `due:` is absent or invalid). An
+  unparseable `t:` is dropped. `nil` when the task has no valid
   `recur:` tag.
   """
   @spec next_recurrence(t(), Date.t()) :: t() | nil
@@ -55,7 +80,7 @@ defmodule TodoTxt.Task do
       desc =
         t.description
         |> update_tag("due", Date.to_string(new_due))
-        |> shift_threshold(t.tags["t"], strict, n, unit, today)
+        |> shift_threshold(t.tags["t"], t.tags["due"], new_due, strict, n, unit, today)
 
       raw =
         [if(t.priority, do: <<"(", t.priority, ")">>), Date.to_string(today), desc]
@@ -90,18 +115,27 @@ defmodule TodoTxt.Task do
     end
   end
 
-  defp shift_threshold(desc, nil, _strict, _n, _u, _today), do: desc
+  defp shift_threshold(desc, nil, _old_due, _new_due, _strict, _n, _u, _today), do: desc
 
-  defp shift_threshold(desc, v, strict, n, unit, today) do
+  defp shift_threshold(desc, v, old_due, new_due, strict, n, unit, today) do
     case Date.from_iso8601(v) do
       {:ok, old_t} ->
-        base = if strict, do: old_t, else: today
-        update_tag(desc, "t", Date.to_string(shift(base, n, unit)))
+        new_t =
+          case {strict, parse_date(old_due)} do
+            {true, _} -> shift(old_t, n, unit)
+            {false, {:ok, d}} -> Date.add(new_due, -Date.diff(d, old_t))
+            {false, _} -> shift(today, n, unit)
+          end
+
+        update_tag(desc, "t", Date.to_string(new_t))
 
       _ ->
         remove_tag(desc, "t")
     end
   end
+
+  defp parse_date(v) when is_binary(v), do: Date.from_iso8601(v)
+  defp parse_date(_), do: :error
 
   defp remove_tag(desc, key) do
     desc

@@ -41,11 +41,11 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS..
 
 | Command | Description |
 |---|---|
-| `do N` | Mark task N done (spawns the next occurrence if it has `recur:`) |
-| `undo N` | Reopen task N |
+| `do N` | Mark task N done; a `(A)` priority moves into a `pri:A` tag (spawns the next occurrence if it has `recur:`) |
+| `undo N` | Reopen task N, restoring the priority from `pri:X` |
 | `del\|rm N [TERM]` | Delete task N, or strip TERM from its text |
 | `pri N X` / `depri N` | Set / remove priority (`A`-`Z`) |
-| `move\|mv N done\|todo` | Move task N between `todo.txt` and `done.txt` |
+| `move\|mv N done\|todo` | Move task N between `todo.txt` and `done.txt` — `done` completes it like `do`, `todo` reopens it like `undo` |
 
 ### Listing
 
@@ -77,14 +77,17 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS..
 | `-f`, `--file PATH` | Use PATH as `todo.txt` |
 | `-d`, `--done-file PATH` | Use PATH as `done.txt` |
 | `--plain` | Disable ANSI colors |
-| `--json` | Emit JSON on `ls`, `listall`, `due`, `agenda`, `listproj`, `listcon` |
+| `--json` | Emit JSON on `ls`, `listall`, `listpri`, `due`, `agenda`, `listproj`, `listcon` |
 | `--tui` | Launch the interactive TUI — takes no command |
 | `-h` | Help |
 
 Task lines are printed as `N: <raw line>` where `N` is the **file line
 number** — stable under filtering, and what `do`/`del`/`pri`/… take as
-argument. Done tasks are dimmed; `(A)`/`(B)`/`(C)` priorities are
-colored red/yellow/cyan.
+argument. Numbers are *not* stable across mutations: every mutating
+command (`do`, `undo`, `mv`, `pri`, `edit`, `del`, `archive`…) rewrites
+the file compacted, dropping blank lines and renumbering tasks 1..N
+contiguously — re-run `ls` before acting on a number. Done tasks are
+dimmed; `(A)`/`(B)`/`(C)` priorities are colored red/yellow/cyan.
 
 ## TUI
 
@@ -169,13 +172,12 @@ Standard todo.txt fields are fully supported: `x` done marker,
 |---|---|
 | `due:YYYY-MM-DD` | Due date; drives `due` buckets and `agenda` |
 | `t:YYYY-MM-DD` | Threshold: task is hidden from `ls` until that date |
-| `recur:[+]N<d\|w\|m\|y>` | Recurrence. `do` on such a task appends the next occurrence with a recomputed `due:`. `recur:+1w` shifts from the **completion** date; `recur:1w` (strict) shifts from the previous `due:` date |
+| `recur:[+]N<d\|w\|m\|y>` | Recurrence. `do` on such a task appends the next occurrence with a recomputed `due:`. `recur:+1w` shifts from the **completion** date; `recur:1w` (strict) shifts from the previous `due:` date. A `t:` threshold keeps its offset to `due:` in both modes |
 
 ## JSON output
 
-`--json` is accepted by `ls`, `listall`, `due`, `agenda`, `listproj`
-and `listcon` (`listpri` stays text-only). Tasks are emitted as
-objects:
+`--json` is accepted by `ls`, `listall`, `listpri`, `due`, `agenda`,
+`listproj` and `listcon`. Tasks are emitted as objects:
 
 ```json
 {
