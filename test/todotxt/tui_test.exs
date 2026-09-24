@@ -1,8 +1,8 @@
 defmodule TodoTxt.TuiTest do
   use ExUnit.Case, async: true
-  alias TodoTxt.{Parser, Tui, Tui.State}
   alias TermUI.Event
   alias TermUI.Widgets.TextInput
+  alias TodoTxt.{Parser, Tui, Tui.State}
 
   defp state(tasks, opts \\ []) do
     State.new(%{

@@ -29,20 +29,13 @@ defmodule TodoTxt.Query do
   pending tasks are hidden while their `t:` threshold date is in
   the future.
   """
-  def visible(tasks, today) do
-    Enum.filter(tasks, fn t ->
-      t.done ||
-        case t.tags["t"] do
-          nil ->
-            true
+  def visible(tasks, today), do: Enum.filter(tasks, &(&1.done || threshold_reached?(&1, today)))
 
-          v ->
-            case Date.from_iso8601(v) do
-              {:ok, d} -> Date.compare(d, today) != :gt
-              _ -> true
-            end
-        end
-    end)
+  defp threshold_reached?(t, today) do
+    case t.tags["t"] && Date.from_iso8601(t.tags["t"]) do
+      {:ok, d} -> Date.compare(d, today) != :gt
+      _ -> true
+    end
   end
 
   @doc "Parses the task's `due:` tag; nil when absent or invalid."

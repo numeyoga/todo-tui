@@ -1,4 +1,6 @@
 defmodule TodoTxt.Parser do
+  @moduledoc "Parses todo.txt lines into `TodoTxt.Task` structs and renders them back."
+
   alias TodoTxt.Task
 
   @tag_re ~r/^([A-Za-z][A-Za-z0-9_-]*):(\S+)$/

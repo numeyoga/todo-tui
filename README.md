@@ -215,5 +215,9 @@ All JSON output is pretty-printed; pipe through `jq` for scripting.
 ```sh
 mix test                       # test suite
 mix format --check-formatted   # formatting
+mix credo --strict             # static analysis
+mix dialyzer                   # type checks (PLTs cached in priv/plts)
+mix deps.audit                 # known-vulnerable deps
+mix quality                    # all of the above + compile --warnings-as-errors
 mix escript.build              # release build → ./todo
 ```

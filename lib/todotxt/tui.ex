@@ -2,10 +2,10 @@ defmodule TodoTxt.Tui do
   @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
   use TermUI.Elm
 
-  alias TodoTxt.{Editor, Format, Tasks}
-  alias TodoTxt.Tui.{Keys, Modal, State, View}
   alias TermUI.{Command, Event}
   alias TermUI.Widgets.TextInput
+  alias TodoTxt.{Editor, Format, Tasks}
+  alias TodoTxt.Tui.{Keys, Modal, State, View}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do

@@ -28,3 +28,6 @@ todotxt-*.tar
 # Agent workspaces (worktrees, superpowers scratch)
 /.worktrees/
 /.superpowers/
+
+# Dialyzer PLTs
+/priv/plts/
