@@ -130,10 +130,9 @@ defmodule TodoTxt.TuiScenariosTest do
 
     # Filtre multi-termes (AND) : projet + contexte + texte libre
     {s, []} = Tui.update({:open_modal, :filter}, s)
-    # La modale est pré-remplie avec le filtre courant
-    # (curseur du TextInput en début de champ → End avant de compléter)
+    # La modale est pré-remplie avec le filtre courant, curseur en fin de champ
     assert TextInput.get_value(s.modal.widget) == "+boulot"
-    {s, []} = Tui.update({:modal_event, Event.key(:end)}, s)
+    assert s.modal.widget.cursor_col == String.length("+boulot")
     s = type(s, " @bureau SPECS")
     {s, []} = Tui.update(:modal_submit, s)
     assert s.filter_terms == ["+boulot", "@bureau", "SPECS"]
@@ -152,10 +151,10 @@ defmodule TodoTxt.TuiScenariosTest do
     s = key(s, :escape)
     assert s.filter_terms == [] and length(State.rows(s)) == 4
 
-    # Filtre soumis vide = efface aussi (pré-rempli "x" → Delete pour vider)
+    # Filtre soumis vide = efface aussi (pré-rempli "x", curseur en fin → Backspace pour vider)
     {s, []} = Tui.update({:open_modal, :filter}, %{s | filter_terms: ["x"]})
     assert TextInput.get_value(s.modal.widget) == "x"
-    {s, []} = Tui.update({:modal_event, Event.key(:delete)}, s)
+    {s, []} = Tui.update({:modal_event, Event.key(:backspace)}, s)
     assert TextInput.get_value(s.modal.widget) == ""
     {s, []} = Tui.update(:modal_submit, s)
     assert s.filter_terms == []
@@ -300,8 +299,8 @@ defmodule TodoTxt.TuiScenariosTest do
     s = key(s, "e")
     assert s.modal.action == :edit
     assert TextInput.get_value(s.modal.widget) == hd(s.tasks).raw
-    # Le curseur du TextInput est en début de champ : End puis backspace ×n
-    {s, []} = Tui.update({:modal_event, Event.key(:end)}, s)
+    # Le curseur du TextInput est en fin de champ : backspace ×n vide le champ
+    assert s.modal.widget.cursor_col == String.length(hd(s.tasks).raw)
 
     s =
       Enum.reduce(1..String.length(hd(s.tasks).raw), s, fn _, acc ->
@@ -341,10 +340,11 @@ defmodule TodoTxt.TuiScenariosTest do
     assert s.status == "2: done"
     assert_received {:write, "t", [_, done, recur]}
     assert done.line == 2 and done.done and done.completion_date == ~D[2026-09-21]
-    assert done.priority == nil
-    # Nouvelle occurrence : ligne max+1, priorité conservée, t:/due: décalés
+    assert done.priority == nil and done.tags["pri"] == "B"
+    # Nouvelle occurrence : ligne max+1, priorité conservée, due: rebasé sur
+    # today et t: gardant son écart de 4 jours avec due:
     assert recur.line == 3 and recur.done == false and recur.priority == ?B
-    assert recur.tags == %{"t" => "2026-09-28", "due" => "2026-09-28", "recur" => "+1w"}
+    assert recur.tags == %{"t" => "2026-09-24", "due" => "2026-09-28", "recur" => "+1w"}
     assert recur.creation_date == ~D[2026-09-21]
 
     assert Enum.map(s.tasks, & &1.line) == [1, 2, 3]
@@ -360,6 +360,8 @@ defmodule TodoTxt.TuiScenariosTest do
     assert s.status == "2: reopened"
     assert_received {:write, "t", ts}
     refute Enum.at(ts, 1).done
+    # La priorité revient depuis pri:B
+    assert Enum.at(ts, 1).priority == ?B and Enum.at(ts, 1).tags["pri"] == nil
     # La récurrence déjà générée reste (pas d'annulation)
     assert length(ts) == 3
 

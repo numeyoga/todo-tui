@@ -2,7 +2,8 @@ defmodule TodoTxt.Commands.Undo do
   @moduledoc """
   `todo undo ITEM#` — reopen a done task.
 
-  Clears `done` and `completion_date`.
+  Clears `done` and `completion_date`; a `pri:X` tag (A-Z) is turned
+  back into the `(X)` priority.
   """
 
   alias TodoTxt.{Commands.Helpers, Parser, Tasks}

@@ -142,7 +142,7 @@ defmodule TodoTxt.CLIScenariosTest do
   # 2. Récurrence multi-itérations
   # ---------------------------------------------------------------------
 
-  test "récurrence non-stricte +1w : deux itérations décalent t: et due: depuis today",
+  test "récurrence non-stricte +1w : due: rebasé sur today, offset t:↔due: préservé",
        %{env: e} do
     assert {:ok, "1: " <> _} =
              CLI.run(["add", "renouveler abo t:2026-09-24 due:2026-09-25 recur:+1w"], e)
@@ -152,16 +152,16 @@ defmodule TodoTxt.CLIScenariosTest do
 
     assert lines(out) == [
              "1: x 2026-09-21 2026-09-21 renouveler abo t:2026-09-24 due:2026-09-25 recur:+1w",
-             "2: 2026-09-21 renouveler abo t:2026-09-28 due:2026-09-28 recur:+1w"
+             "2: 2026-09-21 renouveler abo t:2026-09-27 due:2026-09-28 recur:+1w"
            ]
 
     {:ok, [old, new]} = Store.read(e.paths.todo)
     assert old.done and old.tags["due"] == "2026-09-25"
     refute new.done
     assert new.line == 2 and new.creation_date == @today
-    # Mode non-strict : t: et due: sont tous deux recalculés depuis today,
-    # l'offset t:↔due: (1 jour) est perdu — comportement documenté.
-    assert new.tags == %{"t" => "2026-09-28", "due" => "2026-09-28", "recur" => "+1w"}
+    # Mode non-strict : due: est recalculé depuis today, et t: conserve
+    # l'écart d'origine avec due: (1 jour).
+    assert new.tags == %{"t" => "2026-09-27", "due" => "2026-09-28", "recur" => "+1w"}
 
     # La nouvelle occurrence a t: dans le futur → masquée de ls
     assert {:ok, out} = CLI.run(["--plain", "ls"], e)
@@ -170,7 +170,7 @@ defmodule TodoTxt.CLIScenariosTest do
 
     # 2e itération sur la ligne 2 → ligne 3 (max+1)
     assert {:ok, out} = CLI.run(["do", "2"], e)
-    assert out =~ "3: 2026-09-21 renouveler abo t:2026-09-28 due:2026-09-28 recur:+1w"
+    assert out =~ "3: 2026-09-21 renouveler abo t:2026-09-27 due:2026-09-28 recur:+1w"
     {:ok, ts} = Store.read(e.paths.todo)
     assert Enum.map(ts, &{&1.line, &1.done}) == [{1, true}, {2, true}, {3, false}]
 
@@ -185,9 +185,9 @@ defmodule TodoTxt.CLIScenariosTest do
     {:ok, _} = CLI.run(["add", "(B) renouveler abo t:2026-09-24 due:2026-09-25 recur:1w"], e)
 
     assert {:ok, out} = CLI.run(["do", "1"], e)
-    # La priorité tombe sur la tâche faite mais est conservée sur la récurrence
+    # La priorité passe en pri:B sur la tâche faite et est conservée sur la récurrence
     assert lines(out) == [
-             "1: x 2026-09-21 2026-09-21 renouveler abo t:2026-09-24 due:2026-09-25 recur:1w",
+             "1: x 2026-09-21 2026-09-21 renouveler abo t:2026-09-24 due:2026-09-25 recur:1w pri:B",
              "2: (B) 2026-09-21 renouveler abo t:2026-10-01 due:2026-10-02 recur:1w"
            ]
 
@@ -356,10 +356,8 @@ defmodule TodoTxt.CLIScenariosTest do
     assert {:ok, j} = CLI.run(["--json", "listcon"], e)
     assert Jason.decode!(j) == ["@bureau", "@magasin", "@maison", "@téléphone"]
 
-    # listpri --json : le format JSON n'est pas géré par listpri (sortie texte).
-    # Limite constatée : ListMeta.run(["pri", _]) passe par Format.tasks/2.
-    assert {:ok, out} = CLI.run(["--json", "listpri", "A"], e)
-    assert out =~ "1: (A)"
+    assert {:ok, j} = CLI.run(["--json", "listpri", "A"], e)
+    assert Enum.map(Jason.decode!(j), &{&1["line"], &1["priority"]}) == [{1, "A"}, {4, "A"}]
 
     assert {:ok, j} = CLI.run(["--json", "due"], e)
     due = Jason.decode!(j)
@@ -505,14 +503,12 @@ defmodule TodoTxt.CLIScenariosTest do
     {:ok, _} = CLI.run(["add", "beta +b"], e)
     {:ok, _} = CLI.run(["add", "gamma +c"], e)
 
-    # mv 1 done : la tâche OUVERTE est déplacée telle quelle (pas marquée x)
+    # mv 1 done : la tâche OUVERTE est complétée (x + date) en arrivant dans done.txt
     assert {:ok, "1: moved to done"} = CLI.run(["mv", "1", "done"], e)
     assert raws(e.paths.todo) == ["2026-09-21 beta +b", "2026-09-21 gamma +c"]
-    assert raws(e.paths.done) == ["2026-09-21 alpha +a"]
-    # Limite constatée : mv ne complète pas la tâche — done.txt peut donc
-    # contenir une ligne sans `x` (le format todo.txt ne l'interdit pas).
+    assert raws(e.paths.done) == ["x 2026-09-21 2026-09-21 alpha +a"]
     {:ok, [d]} = Store.read(e.paths.done)
-    refute d.done
+    assert d.done and d.completion_date == @today
 
     # Les numéros de todo.txt sont renumérotés : beta est maintenant 1
     {:ok, ts} = Store.read(e.paths.todo)
@@ -521,21 +517,27 @@ defmodule TodoTxt.CLIScenariosTest do
     # do 1 (beta) puis mv 1 done : arrive dans done.txt avec son x
     {:ok, _} = CLI.run(["do", "1"], e)
     assert {:ok, "1: moved to done"} = CLI.run(["mv", "1", "done"], e)
-    assert raws(e.paths.done) == ["2026-09-21 alpha +a", "x 2026-09-21 2026-09-21 beta +b"]
+
+    assert raws(e.paths.done) == [
+             "x 2026-09-21 2026-09-21 alpha +a",
+             "x 2026-09-21 2026-09-21 beta +b"
+           ]
+
     assert raws(e.paths.todo) == ["2026-09-21 gamma +c"]
 
-    # mv 2 todo : le numéro est celui de done.txt ; la tâche arrive en fin de todo.txt
+    # mv 2 todo : le numéro est celui de done.txt ; la tâche arrive en fin
+    # de todo.txt, rouverte (x et date de complétion retirés)
     assert {:ok, "2: moved to todo"} = CLI.run(["mv", "2", "todo"], e)
-    assert raws(e.paths.done) == ["2026-09-21 alpha +a"]
-    assert raws(e.paths.todo) == ["2026-09-21 gamma +c", "x 2026-09-21 2026-09-21 beta +b"]
-
-    # undo 2 : beta redevient ouverte, sa date de complétion disparaît
-    assert {:ok, "2: 2026-09-21 beta +b"} = CLI.run(["undo", "2"], e)
+    assert raws(e.paths.done) == ["x 2026-09-21 2026-09-21 alpha +a"]
+    assert raws(e.paths.todo) == ["2026-09-21 gamma +c", "2026-09-21 beta +b"]
     t = by_line(e.paths.todo, 2)
     refute t.done
     assert t.completion_date == nil and t.creation_date == @today
 
-    # mv 1 todo ramène alpha ; ls voit les trois, listall voit done.txt vide
+    # undo 2 sur une ligne déjà ouverte est un no-op
+    assert {:ok, "2: 2026-09-21 beta +b"} = CLI.run(["undo", "2"], e)
+
+    # mv 1 todo ramène alpha (rouverte) ; ls voit les trois, listall voit done.txt vide
     assert {:ok, "1: moved to todo"} = CLI.run(["mv", "1", "todo"], e)
     assert {:ok, []} = Store.read(e.paths.done)
 
@@ -668,18 +670,15 @@ defmodule TodoTxt.CLIScenariosTest do
     assert by_line(e.paths.todo, 4).raw == "2026-09-21 (a) minuscule"
     assert by_line(e.paths.todo, 5).priority == nil
 
-    # do : `x` + date de complétion + date de création, priorité retirée
+    # do : `x` + date de complétion + date de création, priorité déplacée en pri:A
     assert {:ok, out} = CLI.run(["do", "1"], e)
-    assert out == "1: x 2026-09-21 2026-09-21 lire https://example.com/a:b?x=1 +web"
+    assert out == "1: x 2026-09-21 2026-09-21 lire https://example.com/a:b?x=1 +web pri:A"
     t = by_line(e.paths.todo, 1)
     assert t.done and t.completion_date == @today and t.creation_date == @today
-    assert t.priority == nil
-    # Limite : la priorité n'est pas conservée en `pri:A` après complétion
-    # (extension todo.sh non implémentée).
-    refute Map.has_key?(t.tags, "pri")
+    assert t.priority == nil and t.tags["pri"] == "A"
 
-    # undo : la priorité perdue ne revient pas
-    assert {:ok, "1: 2026-09-21 lire https://example.com/a:b?x=1 +web"} =
+    # undo : la priorité est restaurée depuis pri:A
+    assert {:ok, "1: (A) 2026-09-21 lire https://example.com/a:b?x=1 +web"} =
              CLI.run(["undo", "1"], e)
 
     # Ligne écrite à la main : `x` + création seule (pas de date de complétion)

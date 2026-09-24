@@ -12,9 +12,26 @@ defmodule TodoTxt.TaskTest do
     end
   end
 
-  test "complete drops priority and sets completion date" do
+  test "complete moves the priority into pri: and sets completion date" do
     t = Parser.parse("(B) 2026-09-20 call mom", 1) |> Task.complete(~D[2026-09-21])
-    assert Parser.render(t) == "x 2026-09-21 2026-09-20 call mom"
+    assert Parser.render(t) == "x 2026-09-21 2026-09-20 call mom pri:B"
+    assert t.priority == nil and t.tags["pri"] == "B"
+  end
+
+  test "complete overwrites a stale pri: tag" do
+    t = Parser.parse("(A) call mom pri:B", 1) |> Task.complete(~D[2026-09-21])
+    assert Parser.render(t) == "x 2026-09-21 call mom pri:A"
+  end
+
+  test "uncomplete restores the priority from pri:" do
+    t = Parser.parse("x 2026-09-21 2026-09-20 call mom pri:B", 1) |> Task.uncomplete()
+    assert Parser.render(t) == "(B) 2026-09-20 call mom"
+    assert t.priority == ?B and t.tags["pri"] == nil
+  end
+
+  test "uncomplete leaves an invalid pri: tag alone" do
+    t = Parser.parse("x 2026-09-21 call mom pri:high", 1) |> Task.uncomplete()
+    assert Parser.render(t) == "call mom pri:high"
   end
 
   test "uncomplete strips x and completion date" do
@@ -48,11 +65,21 @@ defmodule TodoTxt.TaskTest do
     assert Task.next_recurrence(t, ~D[2026-09-21]).tags["due"] == "2026-09-24"
   end
 
-  test "recur +1w shifts t: like due: (base = completion date)" do
+  test "recur +1w rebases due: on today and keeps the t:↔due: offset" do
     t = Parser.parse("renew t:2026-09-24 due:2026-09-25 recur:+1w", 1)
     n = Task.next_recurrence(t, ~D[2026-09-21])
-    assert n.tags["t"] == "2026-09-28"
     assert n.tags["due"] == "2026-09-28"
+    assert n.tags["t"] == "2026-09-27"
+  end
+
+  test "recur +1w without a valid due: shifts t: from today" do
+    t = Parser.parse("renew t:2026-09-24 recur:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["t"] == "2026-09-28" and n.tags["due"] == "2026-09-28"
+
+    t = Parser.parse("renew t:2026-09-24 due:soon recur:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["t"] == "2026-09-28" and n.tags["due"] == "2026-09-28"
   end
 
   test "strict recur:1w shifts t: from its own date, preserving the offset" do

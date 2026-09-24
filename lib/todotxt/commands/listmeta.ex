@@ -13,7 +13,7 @@ defmodule TodoTxt.Commands.ListMeta do
   def run(["pri", p], ctx) do
     with [c] <- String.to_charlist(p), true <- c in ?A..?Z do
       shown = ctx.tasks |> Enum.filter(&(&1.priority == c)) |> TodoTxt.Query.sort()
-      {:ok, Format.tasks(shown, ctx.opts)}
+      {:ok, Format.render(shown, ctx.opts)}
     else
       _ -> {:usage, "todo listpri A-Z"}
     end

@@ -2,7 +2,8 @@ defmodule TodoTxt.Commands.Do do
   @moduledoc """
   `todo do ITEM#` — mark a task as done.
 
-  Sets `done` and `completion_date` to today, drops the priority.
+  Sets `done` and `completion_date` to today; a priority is moved into
+  a `pri:X` tag (todo.txt convention) so `undo` can restore it.
   If the task recurs (`recur:` tag), the next occurrence is appended
   and echoed after the completed task.
   """

@@ -1,6 +1,7 @@
 defmodule TodoTxt.Tui.Modal do
   @moduledoc "Builds modal widget state per action."
 
+  alias TermUI.Event
   alias TermUI.Widget.PickList
   alias TermUI.Widgets.{AlertDialog, TextInput}
   alias TodoTxt.Tui.State
@@ -65,10 +66,21 @@ defmodule TodoTxt.Tui.Modal do
 
     %{
       action: action,
-      widget: TextInput.set_focused(w, true),
+      widget: w |> TextInput.set_focused(true) |> move_cursor_end(),
       widget_mod: TextInput,
       prompt: prompt
     }
+  end
+
+  defp move_cursor_end(w) do
+    case TextInput.get_value(w) do
+      "" ->
+        w
+
+      _ ->
+        {:ok, w2} = TextInput.handle_event(%Event.Key{key: :end, modifiers: [:ctrl]}, w)
+        w2
+    end
   end
 
   defp with_line(modal, s), do: Map.put(modal, :line, selected_line(s))

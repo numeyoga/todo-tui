@@ -152,18 +152,18 @@ todo replace 5 "(C) 2026-09-21 nouveau texte +projet"
 
 | Commande | Effet |
 |---|---|
-| `todo do N` | Marque N faite : préfixe `x <date-du-jour>`. Si la tâche a `recur:`, la prochaine occurrence est ajoutée en fin de fichier. |
-| `todo undo N` | Rouvre N : retire `x` et la date de complétion. |
+| `todo do N` | Marque N faite : préfixe `x <date-du-jour>`. Une priorité `(A)` est déplacée dans un tag `pri:A` (convention todo.txt). Si la tâche a `recur:`, la prochaine occurrence est ajoutée en fin de fichier. |
+| `todo undo N` | Rouvre N : retire `x` et la date de complétion ; un tag `pri:X` redevient la priorité `(X)`. |
 | `todo del N` (`rm`) | Supprime la ligne N. |
 | `todo del N TERM` | Retire TERM de la description de N (ex. `todo del 2 +projet`). |
 | `todo pri N X` | Donne la priorité `X` (A–Z) à la tâche N. |
 | `todo depri N` | Retire la priorité de N. |
-| `todo mv N done` (`move`) | Déplace la ligne N de `todo.txt` vers la fin de `done.txt`. |
-| `todo mv N todo` | Déplace la ligne N de `done.txt` vers `todo.txt`. |
+| `todo mv N done` (`move`) | Déplace la ligne N de `todo.txt` vers la fin de `done.txt`, en la marquant faite (comme `do` : `x <date>`, priorité → `pri:X`). |
+| `todo mv N todo` | Déplace la ligne N de `done.txt` vers `todo.txt`, en la rouvrant (comme `undo` : `x` et date retirés, `pri:X` → priorité). |
 
 ```sh
-todo do 2            # 2: x 2026-09-21 (A) 2026-09-20 appeler mamie …
-todo undo 2          # rouvre la tâche
+todo do 2            # 2: x 2026-09-21 2026-09-20 appeler mamie … pri:A
+todo undo 2          # 2: (A) 2026-09-20 appeler mamie …
 todo pri 3 B         # 3: (B) 2026-09-21 renouveler le domaine …
 todo del 4 +travail  # retire le tag +travail de la tâche 4
 ```
@@ -335,6 +335,11 @@ suivante en fin de fichier, avec `due:` (et `t:` si présent) recalculés :
 - **`recur:1w`** (strict) : calculée **depuis l'ancienne `due:`** —
   échéance calendaire fixe, même si vous êtes en retard.
 
+Dans les deux modes, un `t:` présent conserve son écart avec `due:` :
+`t:2026-09-24 due:2026-09-25 recur:+1w` fait le 2026-09-21 donne
+`t:2026-09-27 due:2026-09-28`. Sans `due:` valide, `t:` est décalé
+depuis la date de complétion ; un `t:` illisible est retiré.
+
 Unités : `d` (jours), `w` (semaines), `m` (mois), `y` (années).
 Exemples : `recur:+3d`, `recur:2w`, `recur:+1m`, `recur:1y`.
 
@@ -426,8 +431,8 @@ todo add -- "texte commençant par --json"
 
 ## 10. Sortie JSON et scripting
 
-`--json` est accepté par `ls`, `listall`, `due`, `agenda`, `listproj`
-et `listcon`. (`listpri` reste en texte.) La sortie est indentée ;
+`--json` est accepté par `ls`, `listall`, `listpri`, `due`, `agenda`,
+`listproj` et `listcon`. La sortie est indentée ;
 passez par `jq` pour scripter.
 
 Objet tâche :
@@ -485,10 +490,17 @@ fi
 
 ## 12. Astuces et limites connues
 
-- **Références stables** : les numéros sont les lignes du fichier ;
-  après `del`/`archive`, relancez `ls` avant d'agir.
-- **Lignes vides** : ignorées au parsing ; elles sont compactées en fin
-  de fichier lors des ajouts.
+- **Références non stables** : les numéros sont les lignes physiques du
+  fichier. **Toute** commande mutante (`do`, `undo`, `mv`, `pri`,
+  `depri`, `edit`, `replace`, `append`, `prepend`, `del`, `archive`,
+  `dedupe`…) réécrit le fichier compacté : les numéros sont réattribués
+  de 1 à N de façon contiguë et peuvent donc changer entre deux
+  mutations. Relancez `ls` avant d'agir sur un numéro.
+- **Lignes vides** : ignorées au parsing (elles comptent dans la
+  numérotation à la lecture, ce qui peut créer des trous), puis
+  supprimées à la première commande mutante — le fichier est réécrit
+  sans lignes vides internes et les tâches suivantes sont renumérotées.
+  `add` ne compacte que les lignes vides de fin de fichier.
 - **`ls` affiche les tâches faites** (estompées, en bas) tant qu'elles
   sont dans `todo.txt` — utilisez `archive` pour les sortir.
 - **`listall` ignore les termes de filtre** éventuels (limitation connue).
