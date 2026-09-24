@@ -5,13 +5,12 @@ defmodule TodoTxt.Commands.Undo do
   Clears `done` and `completion_date`.
   """
 
-  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store, Task}
+  alias TodoTxt.{Commands.Helpers, Parser, Tasks}
 
   def run([n | _], %{tasks: tasks, paths: paths}) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         {:ok, ts} <- Ops.uncomplete(tasks, t),
-         :ok <- Store.write(paths.todo, ts) do
-      {:ok, "#{t.line}: #{Parser.render(Task.uncomplete(t))}"}
+         {:ok, %{task: reopened}} <- Tasks.uncomplete(paths, tasks, t) do
+      {:ok, "#{t.line}: #{Parser.render(reopened)}"}
     end
   end
 

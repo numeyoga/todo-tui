@@ -3,12 +3,11 @@ defmodule TodoTxt.Commands.Depri do
   `todo depri ITEM#` — remove a task's priority.
   """
 
-  alias TodoTxt.{Commands.Helpers, Ops, Store}
+  alias TodoTxt.{Commands.Helpers, Tasks}
 
   def run([n], %{tasks: tasks, paths: paths}) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         {:ok, ts} <- Ops.set_priority(tasks, t, nil),
-         :ok <- Store.write(paths.todo, ts) do
+         {:ok, _} <- Tasks.set_priority(paths.todo, tasks, t, nil) do
       {:ok, "#{t.line}: deprioritized"}
     end
   end

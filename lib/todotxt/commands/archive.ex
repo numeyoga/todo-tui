@@ -6,17 +6,11 @@ defmodule TodoTxt.Commands.Archive do
   todo.txt is rewritten with only the open tasks.
   """
 
-  alias TodoTxt.{Ops, Store}
+  alias TodoTxt.Tasks
 
   def run(_args, %{tasks: tasks, paths: paths}) do
-    {open, done} = Ops.archive(tasks)
-
-    with :ok <- append_done(paths.done, done),
-         :ok <- Store.write(paths.todo, open) do
-      {:ok, "archived #{length(done)} tasks"}
+    with {:ok, %{count: n}} <- Tasks.archive(paths, tasks) do
+      {:ok, "archived #{n} tasks"}
     end
   end
-
-  defp append_done(_path, []), do: :ok
-  defp append_done(path, done), do: Store.append(path, done)
 end

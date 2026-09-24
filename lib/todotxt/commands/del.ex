@@ -7,7 +7,7 @@ defmodule TodoTxt.Commands.Del do
   description (e.g. `todo del 2 +proj`).
   """
 
-  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store}
+  alias TodoTxt.{Commands.Helpers, Parser, Tasks}
 
   def run([n], ctx), do: delete(ctx, n, nil)
   def run([n, term], ctx), do: delete(ctx, n, term)
@@ -15,17 +15,14 @@ defmodule TodoTxt.Commands.Del do
 
   defp delete(%{tasks: tasks, paths: paths}, n, nil) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         {:ok, ts} <- Ops.delete(tasks, t),
-         :ok <- Store.write(paths.todo, ts) do
+         {:ok, _} <- Tasks.delete(paths.todo, tasks, t) do
       {:ok, "#{t.line}: deleted #{t.raw}"}
     end
   end
 
   defp delete(%{tasks: tasks, paths: paths}, n, term) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         {:ok, ts} <- Ops.delete_term(tasks, t, term),
-         :ok <- Store.write(paths.todo, ts) do
-      new = Enum.find(ts, &(&1.line == t.line))
+         {:ok, %{task: new}} <- Tasks.delete_term(paths.todo, tasks, t, term) do
       {:ok, "#{t.line}: #{Parser.render(new)}"}
     end
   end

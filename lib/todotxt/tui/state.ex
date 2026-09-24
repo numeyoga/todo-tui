@@ -1,7 +1,7 @@
 defmodule TodoTxt.Tui.State do
   @moduledoc "Pure TUI model: cursor, filters, views, sidebar. No rendering."
 
-  alias TodoTxt.{Ops, Query}
+  alias TodoTxt.{Ops, Query, Tasks}
 
   defstruct paths: nil,
             today: nil,
@@ -136,13 +136,14 @@ defmodule TodoTxt.Tui.State do
     %{s | mtimes: %{todo: mtime(s.io, s.paths.todo), done: mtime(s.io, s.paths.done)}}
   end
 
-  @doc "Apply an Op result: write files via io, refresh mtimes, clamp, status."
-  def mutate(s, {:ok, tasks2}, toast) do
-    case s.io.write.(s.paths.todo, tasks2) do
-      :ok -> %{s | tasks: tasks2, status: toast} |> refresh_mtimes() |> clamp_selection()
-      {:error, m} -> %{s | status: "error: " <> m}
+  @doc "Apply an Op result to todo.txt via `Tasks.persist/3` (s.io), refresh mtimes, clamp, status."
+  def mutate(s, op_result, toast) do
+    case Tasks.persist(s.io, s.paths.todo, op_result) do
+      {:ok, %{tasks: tasks2}} ->
+        %{s | tasks: tasks2, status: toast} |> refresh_mtimes() |> clamp_selection()
+
+      {:error, m} ->
+        %{s | status: "error: " <> m}
     end
   end
-
-  def mutate(s, {:error, msg}, _toast), do: %{s | status: "error: " <> msg}
 end

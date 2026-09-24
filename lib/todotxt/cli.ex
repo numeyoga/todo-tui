@@ -20,7 +20,7 @@ defmodule TodoTxt.CLI do
   `opts` is `%{file:, done_file:, plain: bool, json: bool, sort: nil | "line"}`.
   """
 
-  alias TodoTxt.{Config, Store}
+  alias TodoTxt.{Config, Tasks}
 
   @commands %{
     "add" => TodoTxt.Commands.Add,
@@ -124,10 +124,8 @@ defmodule TodoTxt.CLI do
     if kw[:tui] do
       case rest do
         [] ->
-          with {:ok, tasks} <- Store.read(env.paths.todo),
-               {:ok, done} <- Store.read(env.paths.done) do
-            env = Map.merge(env, %{tasks: tasks, done_tasks: done})
-            TodoTxt.Tui.run(env)
+          with {:ok, lists} <- Tasks.load(env.paths) do
+            TodoTxt.Tui.run(Map.merge(env, lists))
           end
 
         _ ->
@@ -157,9 +155,8 @@ defmodule TodoTxt.CLI do
   end
 
   defp dispatch(mod, args, env) do
-    with {:ok, tasks} <- Store.read(env.paths.todo),
-         {:ok, done} <- Store.read(env.paths.done) do
-      mod.run(args, Map.merge(env, %{tasks: tasks, done_tasks: done}))
+    with {:ok, lists} <- Tasks.load(env.paths) do
+      mod.run(args, Map.merge(env, lists))
     end
   end
 
