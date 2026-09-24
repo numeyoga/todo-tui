@@ -13,12 +13,12 @@ defmodule TodoTxt.Editor do
   @doc "The editor command line: `$VISUAL`, `$EDITOR`, or `\"vi\"`."
   @spec resolve() :: String.t()
   def resolve do
-    Enum.find_value(["VISUAL", "EDITOR"], "vi", fn var ->
-      case System.get_env(var) do
-        v when is_binary(v) -> if String.trim(v) == "", do: nil, else: v
-        _ -> nil
-      end
-    end)
+    Enum.find_value(["VISUAL", "EDITOR"], "vi", &env_editor/1)
+  end
+
+  defp env_editor(var) do
+    v = System.get_env(var)
+    if is_binary(v) and String.trim(v) != "", do: v
   end
 
   @doc "Splits an editor command line into `[binary | args]`."

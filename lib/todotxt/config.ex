@@ -24,20 +24,17 @@ defmodule TodoTxt.Config do
     path = Path.join(cfg, "todotxt/config")
 
     case File.read(path) do
-      {:ok, c} ->
-        Enum.reduce(String.split(c, "\n"), %{}, fn line, acc ->
-          case String.split(line, "=", parts: 2) do
-            [k, v] ->
-              k = String.trim(k)
-              if k == "", do: acc, else: Map.put(acc, k, String.trim(v))
+      {:ok, c} -> c |> String.split("\n") |> Enum.reduce(%{}, &put_line/2)
+      _ -> %{}
+    end
+  end
 
-            _ ->
-              acc
-          end
-        end)
-
-      _ ->
-        %{}
+  defp put_line(line, acc) do
+    with [k, v] <- String.split(line, "=", parts: 2),
+         k when k != "" <- String.trim(k) do
+      Map.put(acc, k, String.trim(v))
+    else
+      _ -> acc
     end
   end
 end

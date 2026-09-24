@@ -1,4 +1,9 @@
 defmodule TodoTxt.Task do
+  @moduledoc """
+  A parsed todo.txt line. `line` is its 1-based position in the source
+  file; transformations re-render `raw` via `TodoTxt.Parser`.
+  """
+
   @enforce_keys [:line]
   defstruct line: nil,
             raw: "",

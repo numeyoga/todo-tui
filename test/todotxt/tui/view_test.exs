@@ -1,7 +1,7 @@
 defmodule TodoTxt.Tui.ViewTest do
   use ExUnit.Case, async: true
-  alias TodoTxt.{Parser, Tui.State, Tui.View}
   alias TermUI.Component.RenderNode
+  alias TodoTxt.{Parser, Tui.State, Tui.View}
 
   defp st(tasks, opts \\ []) do
     State.new(%{

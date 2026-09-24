@@ -1,9 +1,9 @@
 defmodule TodoTxt.Tui.Modal do
   @moduledoc "Builds modal widget state per action."
 
-  alias TodoTxt.Tui.State
   alias TermUI.Widget.PickList
   alias TermUI.Widgets.{AlertDialog, TextInput}
+  alias TodoTxt.Tui.State
 
   @help_text "j/k nav · Tab focus · Enter applique · x/space do-undo · a add · " <>
                "e edit · A/P append/prepend · p prio · d del · m move · " <>

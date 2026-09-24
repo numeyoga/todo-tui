@@ -2,11 +2,11 @@ defmodule TodoTxt.Tui.View do
   @moduledoc "Render tree for the 3-pane layout + statusline + modals."
 
   import TermUI.Component.Helpers
-  alias TodoTxt.Tui.State
   alias TermUI.Layout.Constraint
   alias TermUI.Renderer.Style
   alias TermUI.Widget.PickList
   alias TermUI.Widgets.{AlertDialog, TextInput}
+  alias TodoTxt.Tui.State
 
   @sel Style.new(attrs: [:reverse])
   @dim Style.new(fg: :bright_black)
