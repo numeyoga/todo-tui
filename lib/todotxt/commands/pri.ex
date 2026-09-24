@@ -5,14 +5,12 @@ defmodule TodoTxt.Commands.Pri do
   Rejects done tasks and priorities outside `A-Z`.
   """
 
-  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store}
+  alias TodoTxt.{Commands.Helpers, Parser, Tasks}
 
   def run([n, p], %{tasks: tasks, paths: paths}) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
          :ok <- valid_priority(t, p),
-         {:ok, ts} <- Ops.set_priority(tasks, t, :binary.first(p)),
-         :ok <- Store.write(paths.todo, ts) do
-      new = Enum.find(ts, &(&1.line == t.line))
+         {:ok, %{task: new}} <- Tasks.set_priority(paths.todo, tasks, t, :binary.first(p)) do
       {:ok, "#{t.line}: #{Parser.render(new)}"}
     end
   end

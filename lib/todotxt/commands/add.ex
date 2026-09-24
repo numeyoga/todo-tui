@@ -6,16 +6,13 @@ defmodule TodoTxt.Commands.Add do
   echoes the rendered task back.
   """
 
-  alias TodoTxt.{Ops, Parser, Store}
+  alias TodoTxt.{Parser, Tasks}
 
   def run([], _), do: {:usage, "todo add \"TASK\""}
 
   def run(words, %{paths: paths, tasks: tasks, today: today}) do
-    task = Ops.add(tasks, Enum.join(words, " "), today)
-
-    case Store.append(paths.todo, [task]) do
-      :ok -> {:ok, "#{task.line}: #{Parser.render(task)}"}
-      {:error, m} -> {:error, m}
+    with {:ok, %{task: task}} <- Tasks.add(paths, tasks, Enum.join(words, " "), today) do
+      {:ok, "#{task.line}: #{Parser.render(task)}"}
     end
   end
 end

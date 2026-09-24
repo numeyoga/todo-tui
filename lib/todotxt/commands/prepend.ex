@@ -3,13 +3,11 @@ defmodule TodoTxt.Commands.Prepend do
   `todo prepend ITEM# TEXT...` — prepend text to a task's description.
   """
 
-  alias TodoTxt.{Commands.Helpers, Ops, Parser, Store}
+  alias TodoTxt.{Commands.Helpers, Parser, Tasks}
 
   def run([n | [_ | _] = words], %{tasks: tasks, paths: paths}) do
     with {:ok, t} <- Helpers.fetch(tasks, n),
-         {:ok, ts} <- Ops.prepend_text(tasks, t, Enum.join(words, " ")),
-         :ok <- Store.write(paths.todo, ts) do
-      new = Enum.find(ts, &(&1.line == t.line))
+         {:ok, %{task: new}} <- Tasks.prepend_text(paths.todo, tasks, t, Enum.join(words, " ")) do
       {:ok, "#{t.line}: #{Parser.render(new)}"}
     end
   end
