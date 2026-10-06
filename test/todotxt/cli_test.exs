@@ -428,6 +428,20 @@ defmodule TodoTxt.CLITest do
     assert out == "1: z"
   end
 
+  test "--local and -l use files in current working directory", %{env: e, dir: dir} do
+    local_todo = Path.join(dir, "todo.txt")
+    File.write!(local_todo, "local task\n")
+
+    File.cd!(dir, fn ->
+      env = Map.delete(e, :paths)
+      assert {:ok, out} = CLI.run(["--local", "ls", "--plain"], env)
+      assert out == "1: local task"
+
+      assert {:ok, out_short} = CLI.run(["-l", "ls", "--plain"], env)
+      assert out_short == "1: local task"
+    end)
+  end
+
   test "mv appends to destination first: append failure keeps the source intact",
        %{env: e} do
     File.write!(e.paths.todo, "one\ntwo\n")

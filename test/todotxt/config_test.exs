@@ -100,4 +100,33 @@ defmodule TodoTxt.ConfigTest do
 
     assert Config.load_file() == %{"TODO_DIR" => "/a/b", "EMPTY" => ""}
   end
+
+  test "local: flag sets relative paths in current directory" do
+    paths = Config.resolve_paths(%{local: true})
+    assert paths.todo == "./todo.txt"
+    assert paths.done == "./done.txt"
+    assert paths.report == "./report.txt"
+  end
+
+  test "local: flag wins over TODOTXT_DIR, TODOTXT_TODO_FILE and config", %{dir: d} do
+    System.put_env("TODOTXT_DIR", Path.join(d, "custom"))
+    System.put_env("TODOTXT_TODO_FILE", Path.join(d, "env.txt"))
+    System.put_env("TODOTXT_DONE_FILE", Path.join(d, "env_done.txt"))
+
+    cfg = Path.join(d, "cfg")
+    File.mkdir_p!(Path.join(cfg, "todotxt"))
+    File.write!(Path.join([cfg, "todotxt", "config"]), "TODO_DIR=#{d}/fromcfg\n")
+
+    paths = Config.resolve_paths(%{local: true})
+    assert paths.todo == "./todo.txt"
+    assert paths.done == "./done.txt"
+    assert paths.report == "./report.txt"
+  end
+
+  test "explicit file/done_file flags win over local: flag" do
+    paths = Config.resolve_paths(%{local: true, file: "custom.txt", done_file: "arch.txt"})
+    assert paths.todo == "custom.txt"
+    assert paths.done == "arch.txt"
+    assert paths.report == "./report.txt"
+  end
 end

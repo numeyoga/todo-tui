@@ -8,14 +8,35 @@ defmodule TodoTxt.Config do
 
   @spec resolve_paths(map) :: %{todo: Path.t(), done: Path.t(), report: Path.t()}
   def resolve_paths(opts \\ %{}) do
-    data = System.get_env("XDG_DATA_HOME") || Path.join(System.user_home!(), ".local/share")
-    dir = System.get_env("TODOTXT_DIR") || load_file()["TODO_DIR"] || Path.join(data, "todo")
+    dir = resolve_dir(opts)
 
     %{
-      todo: opts[:file] || System.get_env("TODOTXT_TODO_FILE") || Path.join(dir, "todo.txt"),
-      done: opts[:done_file] || System.get_env("TODOTXT_DONE_FILE") || Path.join(dir, "done.txt"),
+      todo: resolve_file(opts, :file, "TODOTXT_TODO_FILE", Path.join(dir, "todo.txt")),
+      done: resolve_file(opts, :done_file, "TODOTXT_DONE_FILE", Path.join(dir, "done.txt")),
       report: Path.join(dir, "report.txt")
     }
+  end
+
+  defp resolve_dir(opts) do
+    cond do
+      opts[:local] -> "."
+      env_dir = System.get_env("TODOTXT_DIR") -> env_dir
+      cfg_dir = load_file()["TODO_DIR"] -> cfg_dir
+      true -> default_data_dir()
+    end
+  end
+
+  defp default_data_dir do
+    data = System.get_env("XDG_DATA_HOME") || Path.join(System.user_home!(), ".local/share")
+    Path.join(data, "todo")
+  end
+
+  defp resolve_file(opts, opt_key, env_var, fallback) do
+    cond do
+      opts[opt_key] -> opts[opt_key]
+      opts[:local] -> fallback
+      true -> System.get_env(env_var) || fallback
+    end
   end
 
   @spec load_file() :: %{String.t() => String.t()}

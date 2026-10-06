@@ -42,6 +42,7 @@ defmodule TodoTxt.Commands.Help do
 
     Méta:
       --tui                  interactive TUI
+      -l, --local            use todo.txt in current directory
       help, -h               this help
       --version              print version
     """

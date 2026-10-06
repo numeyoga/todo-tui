@@ -371,10 +371,11 @@ Les fichiers sont créés à la première écriture si nécessaire.
 Le premier qui gagne :
 
 1. Flags : `todo -f autre.txt ls`, `todo --done-file=archives.txt …`
-2. Variables : `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
-3. `TODOTXT_DIR` : un répertoire pour `todo.txt` + `done.txt` + `report.txt`
-4. `TODO_DIR=` dans le fichier de config
-5. Défaut XDG ci-dessus
+2. Flag local : `todo -l` / `todo --local` (utilise `todo.txt`, `done.txt`, `report.txt` dans le répertoire courant)
+3. Variables : `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
+4. `TODOTXT_DIR` : un répertoire pour `todo.txt` + `done.txt` + `report.txt`
+5. `TODO_DIR=` dans le fichier de config
+6. Défaut XDG ci-dessus
 
 `--done-file` et `TODOTXT_DONE_FILE` permettent de placer `done.txt`
 indépendamment de `todo.txt`. `report.txt` suit le répertoire de données
@@ -411,6 +412,7 @@ monochrome (attributs gras/estompé/vidéo inversée, sans couleurs).
 |---|---|
 | `-f`, `--file PATH` | Fichier `todo.txt` à utiliser |
 | `-d`, `--done-file PATH` | Fichier `done.txt` à utiliser |
+| `-l`, `--local` | Utilise les fichiers du répertoire courant (`./todo.txt`, `./done.txt`) |
 | `--plain` | Pas de couleurs |
 | `--json` | Sortie JSON (voir §10) |
 | `--tui` | Interface interactive — aucune commande acceptée (voir §6) |

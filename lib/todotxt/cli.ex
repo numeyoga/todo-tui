@@ -62,13 +62,14 @@ defmodule TodoTxt.CLI do
   @switches [
     file: :string,
     done_file: :string,
+    local: :boolean,
     plain: :boolean,
     json: :boolean,
     tui: :boolean,
     help: :boolean,
     version: :boolean
   ]
-  @aliases [f: :file, d: :done_file, h: :help]
+  @aliases [f: :file, d: :done_file, l: :local, h: :help]
 
   @version "todo 0.1.0"
 
@@ -120,6 +121,7 @@ defmodule TodoTxt.CLI do
     %{
       file: kw[:file],
       done_file: kw[:done_file],
+      local: Keyword.get(kw, :local, false),
       plain: Keyword.get(kw, :plain, false),
       json: Keyword.get(kw, :json, false),
       sort: nil

@@ -24,7 +24,7 @@ Full user documentation (in French): [docs/GUIDE.md](docs/GUIDE.md).
 ## Usage
 
 ```
-todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS...]
+todo [--file PATH] [--done-file PATH] [-l|--local] [--plain] [--json] [--tui] COMMAND [ARGS...]
 ```
 
 ### Adding & editing
@@ -76,6 +76,7 @@ todo [--file PATH] [--done-file PATH] [--plain] [--json] [--tui] COMMAND [ARGS..
 |---|---|
 | `-f`, `--file PATH` | Use PATH as `todo.txt` |
 | `-d`, `--done-file PATH` | Use PATH as `done.txt` |
+| `-l`, `--local` | Use `todo.txt` / `done.txt` in the current directory |
 | `--plain` | Disable ANSI colors |
 | `--json` | Emit JSON on `ls`, `listall`, `listpri`, `due`, `agenda`, `listproj`, `listcon` |
 | `--tui` | Launch the interactive TUI — takes no command |
@@ -140,11 +141,12 @@ press `r` to force a reload.
 Paths are resolved in this order (first wins):
 
 1. CLI flags `-f` / `--done-file`
-2. Env vars `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
-3. `TODOTXT_DIR` (applies to both files and `report.txt`)
-4. `TODO_DIR=` in the config file `$XDG_CONFIG_HOME/todotxt/config`
+2. CLI flag `-l` / `--local` (uses `todo.txt`, `done.txt`, `report.txt` in the current directory)
+3. Env vars `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
+4. `TODOTXT_DIR` (applies to both files and `report.txt`)
+5. `TODO_DIR=` in the config file `$XDG_CONFIG_HOME/todotxt/config`
    (`KEY=value` lines)
-5. XDG default: `$XDG_DATA_HOME/todo/` (i.e. `~/.local/share/todo/`)
+6. XDG default: `$XDG_DATA_HOME/todo/` (i.e. `~/.local/share/todo/`)
 
 `done.txt` can be relocated independently via `-d` /
 `TODOTXT_DONE_FILE`; `report.txt` follows the data directory
