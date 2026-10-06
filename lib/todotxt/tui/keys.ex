@@ -26,6 +26,7 @@ defmodule TodoTxt.Tui.Keys do
     "p" => {:open_modal, :pri},
     "m" => :move,
     "R" => {:open_modal, :archive},
+    "L" => :toggle_scope,
     "/" => {:open_modal, :filter},
     "E" => :edit_external,
     "r" => :reload,

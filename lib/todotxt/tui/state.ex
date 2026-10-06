@@ -21,18 +21,29 @@ defmodule TodoTxt.Tui.State do
             height: 24,
             caller: nil,
             plain: false,
-            io: nil
+            io: nil,
+            opts: %{},
+            local: false
 
   def new(env) do
+    opts = env[:opts] || %{}
+    local = opts[:local] || env[:local] || false
+    width = env[:width] || 80
+    height = env[:height] || 24
+
     %__MODULE__{
-      paths: env.paths,
-      today: env.today,
-      tasks: env.tasks || [],
-      done_tasks: env.done_tasks || [],
-      caller: env.caller,
+      paths: Map.get(env, :paths),
+      today: Map.get(env, :today),
+      tasks: Map.get(env, :tasks, []),
+      done_tasks: Map.get(env, :done_tasks, []),
+      caller: Map.get(env, :caller),
       plain: env[:plain] || false,
-      io: env.io,
-      mtimes: env[:mtimes] || %{}
+      io: Map.get(env, :io),
+      mtimes: env[:mtimes] || %{},
+      opts: opts,
+      local: local,
+      width: width,
+      height: height
     }
   end
 
@@ -51,7 +62,25 @@ defmodule TodoTxt.Tui.State do
     do: list |> Enum.frequencies() |> Enum.sort_by(fn {k, _} -> k end)
 
   @doc "Rows of the central pane: {:task, t} or section {:header, label}."
-  def rows(%{view: :todo} = s) do
+  def rows(%{focus: :sidebar} = s) do
+    case Enum.at(sidebar_entries(s), s.sidebar_idx) do
+      {:all, _} ->
+        rows_for(%{s | view: :todo, filter_terms: []})
+
+      {kind, _, term} when kind in [:project, :context] ->
+        rows_for(%{s | view: :todo, filter_terms: [term]})
+
+      {:view, _, v} ->
+        rows_for(%{s | view: v, filter_terms: []})
+
+      _ ->
+        rows_for(s)
+    end
+  end
+
+  def rows(s), do: rows_for(s)
+
+  defp rows_for(%{view: :todo} = s) do
     s.tasks
     |> Query.visible(s.today)
     |> Query.filter(s.filter_terms)
@@ -59,13 +88,13 @@ defmodule TodoTxt.Tui.State do
     |> Enum.map(&{:task, &1})
   end
 
-  def rows(%{view: :done} = s) do
+  defp rows_for(%{view: :done} = s) do
     s.done_tasks
     |> Enum.sort_by(& &1.line, :desc)
     |> Enum.map(&{:task, &1})
   end
 
-  def rows(%{view: :agenda} = s) do
+  defp rows_for(%{view: :agenda} = s) do
     {groups, thresholds} = Ops.agenda(s.tasks, s.today)
 
     Enum.flat_map(groups, fn {d, ts} ->
@@ -75,6 +104,8 @@ defmodule TodoTxt.Tui.State do
         do: [],
         else: [{:header, "THRESHOLDS:"}] ++ Enum.map(thresholds, &{:task, &1})
   end
+
+  defp rows_for(s), do: rows_for(Map.put(s, :view, :todo))
 
   def selected_task(s) do
     case Enum.at(task_rows(s), s.list_idx) do
@@ -86,17 +117,46 @@ defmodule TodoTxt.Tui.State do
   defp task_rows(s), do: Enum.filter(rows(s), &match?({:task, _}, &1))
 
   # Cursor movement clamps into range. The list cursor indexes task rows
-  # only, so :header rows are naturally skipped; the sidebar cursor indexes
-  # all entries (headers included) — the brief's "saute les :header" applies
-  # to the list only.
+  # only, so :header rows are naturally skipped; the sidebar cursor skips
+  # non-selectable :header rows and immediately updates the central pane.
   def move_cursor(%{focus: :sidebar} = s, d) do
-    max = length(sidebar_entries(s)) - 1
-    %{s | sidebar_idx: (s.sidebar_idx + d) |> max(0) |> min(max)}
+    entries = sidebar_entries(s)
+    new_idx = next_selectable_sidebar_idx(entries, s.sidebar_idx, d)
+    %{s | sidebar_idx: new_idx, list_idx: 0}
   end
 
   def move_cursor(s, d) do
     max = max(length(task_rows(s)) - 1, 0)
     %{s | list_idx: (s.list_idx + d) |> max(0) |> min(max)}
+  end
+
+  defp next_selectable_sidebar_idx(entries, current_idx, d) do
+    total = length(entries)
+
+    if total == 0 do
+      0
+    else
+      step = if d >= 0, do: 1, else: -1
+      find_selectable(entries, current_idx + step, step, total, current_idx)
+    end
+  end
+
+  defp find_selectable(_entries, target, _step, total, fallback)
+       when target < 0 or target >= total do
+    fallback
+  end
+
+  defp find_selectable(entries, target, step, total, fallback) do
+    case Enum.at(entries, target) do
+      {:header, _} ->
+        find_selectable(entries, target + step, step, total, fallback)
+
+      nil ->
+        fallback
+
+      _other ->
+        target
+    end
   end
 
   @doc "Clamp list_idx after the task set changed (reload/mutation)."

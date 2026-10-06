@@ -8,15 +8,24 @@ defmodule TodoTxt.Tui.Modal do
 
   @help_text "j/k nav · Tab focus · Enter applique · x/space do-undo · a add · " <>
                "e edit · A/P append/prepend · p prio · d del · m move · " <>
-               "R archive · / filter · E $EDITOR · r reload · Esc annule · q quit"
+               "R archive · L scope · / filter · E $EDITOR · r reload · Esc annule · q quit"
 
   @doc "Modal map `%{action:, widget:, widget_mod:}` (+`:line` when task-bound)."
-  def open(:add, _s), do: text_modal(:add, "", "New task: ")
-  def open(:filter, s), do: text_modal(:filter, Enum.join(s.filter_terms, " "), "Filter: ")
+  def open(:add, s), do: text_modal(:add, "", "New task: ", Map.get(s, :width, 80))
 
-  def open(:edit, s), do: text_modal(:edit, selected_raw(s), "Edit: ") |> with_line(s)
-  def open(:append, s), do: text_modal(:append, "", "Append: ") |> with_line(s)
-  def open(:prepend, s), do: text_modal(:prepend, "", "Prepend: ") |> with_line(s)
+  def open(:filter, s),
+    do: text_modal(:filter, Enum.join(s.filter_terms, " "), "Filter: ", Map.get(s, :width, 80))
+
+  def open(:edit, s),
+    do:
+      text_modal(:edit, selected_raw(s), "Edit: ", Map.get(s, :width, 80))
+      |> with_line(s)
+
+  def open(:append, s),
+    do: text_modal(:append, "", "Append: ", Map.get(s, :width, 80)) |> with_line(s)
+
+  def open(:prepend, s),
+    do: text_modal(:prepend, "", "Prepend: ", Map.get(s, :width, 80)) |> with_line(s)
 
   def open(:pri, s) do
     items = Enum.map(?A..?Z, &<<&1>>) ++ ["(aucune)"]
@@ -61,8 +70,10 @@ defmodule TodoTxt.Tui.Modal do
     end
   end
 
-  defp text_modal(action, value, prompt) do
-    {:ok, w} = TextInput.init(TextInput.new(value: value, placeholder: prompt, width: 60))
+  defp text_modal(action, value, prompt, screen_width) do
+    sw = screen_width || 80
+    width = max(sw - String.length(prompt) - 2, 80)
+    {:ok, w} = TextInput.init(TextInput.new(value: value, placeholder: prompt, width: width))
 
     %{
       action: action,

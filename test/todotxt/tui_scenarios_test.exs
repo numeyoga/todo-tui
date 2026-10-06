@@ -177,9 +177,10 @@ defmodule TodoTxt.TuiScenariosTest do
     assert {:project, "+perso (2)", "+perso"} in entries
     assert {:context, "@bureau (2)", "@bureau"} in entries
 
-    # j en focus sidebar déplace sidebar_idx, pas list_idx
+    # j en focus sidebar déplace sidebar_idx (en sautant les headers), pas list_idx
     idx = Enum.find_index(entries, &match?({:project, _, "+perso"}, &1))
-    s = Enum.reduce(1..idx, s, fn _, acc -> key(acc, "j") end)
+    steps = Enum.count(0..(idx - 1), fn i -> not match?({:header, _}, Enum.at(entries, i)) end)
+    s = Enum.reduce(1..steps, s, fn _, acc -> key(acc, "j") end)
     assert s.sidebar_idx == idx and s.list_idx == 0
 
     # Enter : filtre +perso, focus revient à la liste

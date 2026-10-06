@@ -1,6 +1,8 @@
 defmodule TodoTxt.Tui.DecideTest do
   use ExUnit.Case, async: true
-  alias TodoTxt.{Parser, Tui, Tui.State}
+  alias TermUI.Event
+  alias TermUI.Widgets.TextInput
+  alias TodoTxt.{Parser, Tui, Tui.Modal, Tui.State}
 
   # decide/2 must never touch io: every io function raises.
   defp state(tasks, opts \\ []) do
@@ -45,5 +47,36 @@ defmodule TodoTxt.Tui.DecideTest do
     assert {^s, [{:send, pid, {:tui_exit, :edit}}, quit]} = Tui.decide(:edit_external, s)
     assert pid == self() and quit == TermUI.Command.quit()
     refute_received {:tui_exit, :edit}
+  end
+
+  test "toggle_scope flips local boolean, switches paths, and emits reload effect" do
+    s = state([t("a", 1)], local: false)
+    assert {s2, [:reload, {:status, status}]} = Tui.decide(:toggle_scope, s)
+    assert s2.local == true
+    assert s2.paths.todo == "./todo.txt"
+    assert status == "scope: local (./todo.txt)"
+
+    assert {s3, [:reload, {:status, status3}]} = Tui.decide(:toggle_scope, s2)
+    assert s3.local == false
+    assert status3 == "scope: global (XDG)"
+  end
+
+  test "sidebar focus disables task mutation shortcuts" do
+    s = state([t("a", 1)], focus: :sidebar)
+    assert {^s, []} = Tui.decide(:toggle_done, s)
+    assert {^s, []} = Tui.decide(:move, s)
+    assert {^s, []} = Tui.decide({:open_modal, :add}, s)
+    assert {^s, []} = Tui.decide({:open_modal, :edit}, s)
+    assert {^s, []} = Tui.decide({:open_modal, :del}, s)
+  end
+
+  test "Ctrl+U clears text input modal" do
+    s = state([t("a", 1)])
+    s = %{s | mode: :input, modal: Modal.open(:edit, s)}
+    assert TextInput.get_value(s.modal.widget) == "a"
+
+    key_ev = %Event.Key{key: "u", modifiers: [:ctrl]}
+    {s2, []} = Tui.decide({:modal_event, key_ev}, s)
+    assert TextInput.get_value(s2.modal.widget) == ""
   end
 end

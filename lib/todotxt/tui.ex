@@ -9,8 +9,12 @@ defmodule TodoTxt.Tui do
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do
+    {cols, rows} = detect_dimensions(env)
+
     env =
       env
+      |> Map.put_new(:width, cols)
+      |> Map.put_new(:height, rows)
       |> Map.put_new(:today, Date.utc_today())
       |> Map.put_new(:io, Map.put(Tasks.default_io(), :stat, &File.stat/1))
       # --plain / COLORS=off (déjà mergé dans env.opts) + NO_COLOR/TERM
@@ -26,6 +30,24 @@ defmodule TodoTxt.Tui do
       :ok -> handle_exit(env)
       {:ok, _} -> handle_exit(env)
       {:error, m} -> {:error, m}
+    end
+  end
+
+  defp detect_dimensions(env) do
+    default_w = env[:width] || 80
+    default_h = env[:height] || 24
+
+    with {:ok, cols} <- :io.columns(),
+         {:ok, rows} <- :io.rows(),
+         true <- is_integer(cols) and cols > 0,
+         true <- is_integer(rows) and rows > 0 do
+      {cols, rows}
+    else
+      _ ->
+        case Process.whereis(TermUI.Terminal) && TermUI.Terminal.get_terminal_size() do
+          {:ok, {rows, cols}} when is_integer(cols) and cols > 0 -> {cols, rows}
+          _ -> {default_w, default_h}
+        end
     end
   end
 
@@ -59,6 +81,18 @@ defmodule TodoTxt.Tui do
   # --- Elm callbacks ---
   def init(opts) do
     env = Keyword.fetch!(opts, :env)
+
+    {cols, rows} =
+      case Process.whereis(TermUI.Terminal) && TermUI.Terminal.get_terminal_size() do
+        {:ok, {rows, cols}}
+        when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 ->
+          {cols, rows}
+
+        _ ->
+          detect_dimensions(env)
+      end
+
+    env = Map.merge(env, %{width: cols, height: rows})
     # Seed mtimes : sinon le 1er :tick (2 s) déclenche un reload parasite.
     state = State.new(env) |> State.refresh_mtimes()
     {:ok, state, [Command.interval(2_000, :tick)]}
@@ -115,6 +149,14 @@ defmodule TodoTxt.Tui do
   def decide(:clear_filter, s), do: {%{s | filter_terms: [], list_idx: 0}, []}
   def decide(:quit, s), do: {s, [Command.quit()]}
 
+  # Raccourcis de modification désactivés quand le focus est sur le menu latéral
+  def decide(:toggle_done, %{focus: :sidebar} = s), do: {s, []}
+  def decide(:move, %{focus: :sidebar} = s), do: {s, []}
+
+  def decide({:open_modal, action}, %{focus: :sidebar} = s)
+      when action in [:add, :edit, :append, :prepend, :del, :pri],
+      do: {s, []}
+
   # En vue :done, la sélection vient de done_tasks — done.txt est positionnel,
   # ses numéros de ligne collisionnent avec todo.txt : on ne touche PAS à
   # s.tasks. Réouverture = append à todo.txt puis réécriture de done.txt ;
@@ -147,6 +189,15 @@ defmodule TodoTxt.Tui do
 
   def decide(:reload, s), do: {s, [:reload]}
 
+  def decide(:toggle_scope, s) do
+    new_local = not s.local
+    new_opts = Map.put(s.opts, :local, new_local)
+    new_paths = TodoTxt.Config.resolve_paths(new_opts)
+    s2 = %{s | local: new_local, opts: new_opts, paths: new_paths, list_idx: 0}
+    label = if new_local, do: "local (./todo.txt)", else: "global (XDG)"
+    {s2, [:reload, {:status, "scope: #{label}"}]}
+  end
+
   # :tick (2 s, Command.interval en init) : watch externe sur les mtimes.
   # Aucun changement → no-op (même struct). Changement → reload, qui
   # rafraîchit les mtimes et clampe la sélection.
@@ -172,6 +223,27 @@ defmodule TodoTxt.Tui do
 
   def decide({:modal_event, %Event.Key{key: :escape}}, s), do: decide(:modal_cancel, s)
 
+  # Vider le champ de saisie avec Ctrl+U ou Ctrl+K
+  def decide(
+        {:modal_event, %Event.Key{key: k, modifiers: mods}},
+        %{modal: %{widget_mod: TextInput} = modal} = s
+      )
+      when k in ["u", "k", :u, :k, ?u, ?k, "U", "K"] do
+    if is_list(mods) and :ctrl in mods do
+      w = TextInput.clear(modal.widget)
+      {%{s | modal: %{modal | widget: w}}, []}
+    else
+      # Pas Ctrl, délègue à l'événement normal
+      {:ok, w2} =
+        modal.widget_mod.handle_event(
+          normalize_key(%Event.Key{key: k, modifiers: mods}),
+          modal.widget
+        )
+
+      {%{s | modal: %{modal | widget: w2}}, []}
+    end
+  end
+
   def decide(
         {:modal_event, %Event.Key{key: :enter}},
         %{modal: %{widget_mod: TextInput}} = s
@@ -195,7 +267,8 @@ defmodule TodoTxt.Tui do
 
   def decide(:modal_submit, %{modal: %{widget_mod: TextInput} = modal} = s) do
     s = %{s | mode: :normal, modal: nil}
-    text = TextInput.get_value(modal.widget) |> String.trim()
+    raw_text = TextInput.get_value(modal.widget) |> String.trim()
+    text = expand_relative_dates(raw_text, s.today)
 
     case {modal.action, text} do
       {_, ""} when modal.action != :filter ->
@@ -246,6 +319,21 @@ defmodule TodoTxt.Tui do
 
   # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
   def decide(_, s), do: {s, []}
+
+  defp expand_relative_dates(text, %Date{} = today) do
+    tomorrow = Date.add(today, 1)
+
+    text
+    |> String.replace(
+      ~r/\bdue:(today|aujourdhui|aujourd'hui)\b/i,
+      "due:#{Date.to_iso8601(today)}"
+    )
+    |> String.replace(~r/\bdue:(tomorrow|demain)\b/i, "due:#{Date.to_iso8601(tomorrow)}")
+    |> String.replace(~r/\bt:(today|aujourdhui|aujourd'hui)\b/i, "t:#{Date.to_iso8601(today)}")
+    |> String.replace(~r/\bt:(tomorrow|demain)\b/i, "t:#{Date.to_iso8601(tomorrow)}")
+  end
+
+  defp expand_relative_dates(text, _), do: text
 
   # Printable keys from the real parser carry `key` and `char`; synthetic
   # events (tests) may only set `key` — fill `char` so widgets see input.
