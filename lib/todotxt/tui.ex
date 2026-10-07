@@ -6,7 +6,7 @@ defmodule TodoTxt.Tui do
   alias TermUI.Renderer.{Buffer, BufferManager}
   alias TermUI.Widgets.TextInput
   alias TodoTxt.{Editor, Format, Tasks}
-  alias TodoTxt.Tui.{Keys, Modal, State, View}
+  alias TodoTxt.Tui.{Keys, Modal, ResizeDebouncer, State, View}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do
@@ -25,12 +25,29 @@ defmodule TodoTxt.Tui do
 
     # TermUI.Runtime.run/1 returns :ok | {:error, term}; the test seam may
     # also return {:ok, _} (TermUI.App.run/2's shape) — both mean clean exit.
-    runner = env[:runner] || fn e -> TermUI.Runtime.run(root: __MODULE__, env: e) end
+    runner = env[:runner] || (&default_runner/1)
 
     case runner.(env) do
       :ok -> handle_exit(env)
       {:ok, _} -> handle_exit(env)
       {:error, m} -> {:error, m}
+    end
+  end
+
+  defp default_runner(env) do
+    case TermUI.Runtime.start_link(root: __MODULE__, env: env) do
+      {:ok, runtime} ->
+        {:ok, _debouncer} = ResizeDebouncer.start(runtime)
+
+        ref = Process.monitor(runtime)
+
+        receive do
+          {:DOWN, ^ref, :process, ^runtime, _reason} ->
+            :ok
+        end
+
+      {:error, m} ->
+        {:error, m}
     end
   end
 
@@ -430,6 +447,10 @@ defmodule TodoTxt.Tui do
   end
 
   defp run_effect(:redraw, s) do
+    if pid = Process.whereis(TermUI.Terminal) do
+      send(pid, :sigwinch)
+    end
+
     clear_screen_and_buffers()
     {cols, rows} = detect_dimensions(s)
     {:ok, %{s | width: cols, height: rows, status: "redessiné"}}
@@ -448,10 +469,6 @@ defmodule TodoTxt.Tui do
   end
 
   defp clear_screen_and_buffers do
-    if pid = Process.whereis(TermUI.Terminal) do
-      send(pid, :sigwinch)
-    end
-
     IO.write("\e[2J\e[H")
 
     terms = :persistent_term.get()
