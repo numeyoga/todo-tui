@@ -21,7 +21,10 @@ defmodule TodoTxt.CLI do
   """
 
   alias TodoTxt.Commands.{Help, ListAddons}
-  alias TodoTxt.{Config, Tasks, Tui}
+  alias TodoTxt.Config
+  alias TodoTxt.Tasks
+  alias TodoTxt.Tui
+  alias TodoTxt.Tui.NifLoader
 
   @commands %{
     "add" => TodoTxt.Commands.Add,
@@ -129,6 +132,8 @@ defmodule TodoTxt.CLI do
   end
 
   defp run_tui([], env) do
+    NifLoader.ensure_loaded()
+
     with {:ok, lists} <- Tasks.load(env.paths) do
       Tui.run(Map.merge(env, lists))
     end

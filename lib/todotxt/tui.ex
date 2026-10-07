@@ -1,15 +1,34 @@
 defmodule TodoTxt.Tui do
-  @moduledoc "Interactive TUI — `todo --tui`. Elm app on term_ui."
-  use TermUI.Elm
+  @moduledoc "Interactive TUI — `todo --tui`. Elm-style app on ExRatatui."
+  @doc false
+  def __runtime__, do: :callbacks
 
-  alias TermUI.{Command, Event}
+  @doc false
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :transient
+    }
+  end
+
+  @doc false
+  def start_link(opts \\ []) when is_list(opts) do
+    opts |> Keyword.put(:mod, __MODULE__) |> ExRatatui.App.dispatch_start()
+  end
+
+  alias ExRatatui.Event, as: RatatuiEvent
+  alias TermUI.Command
+  alias TermUI.Event, as: TermUIEvent
   alias TermUI.Renderer.{Buffer, BufferManager}
   alias TermUI.Widgets.TextInput
   alias TodoTxt.{Editor, Format, Tasks}
-  alias TodoTxt.Tui.{Keys, Modal, ResizeDebouncer, State, View}
+  alias TodoTxt.Tui.{Keys, Modal, NifLoader, RatatuiRenderer, State, View}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
   def run(env) do
+    NifLoader.ensure_loaded()
     {cols, rows} = detect_dimensions(env)
 
     env =
@@ -23,8 +42,7 @@ defmodule TodoTxt.Tui do
       |> Map.put_new(:plain, not Format.colors_enabled?(env[:opts] || %{}))
       |> Map.put(:caller, self())
 
-    # TermUI.Runtime.run/1 returns :ok | {:error, term}; the test seam may
-    # also return {:ok, _} (TermUI.App.run/2's shape) — both mean clean exit.
+    # ExRatatui runner
     runner = env[:runner] || (&default_runner/1)
 
     case runner.(env) do
@@ -35,10 +53,11 @@ defmodule TodoTxt.Tui do
   end
 
   defp default_runner(env) do
-    case TermUI.Runtime.start_link(root: __MODULE__, env: env) do
-      {:ok, runtime} ->
-        {:ok, _debouncer} = ResizeDebouncer.start(runtime)
+    opts = [env: env, name: nil]
+    opts = if env[:test_mode], do: [test_mode: env[:test_mode]] ++ opts, else: opts
 
+    case start_link(opts) do
+      {:ok, runtime} ->
         ref = Process.monitor(runtime)
 
         receive do
@@ -55,7 +74,19 @@ defmodule TodoTxt.Tui do
     default_w = Map.get(env, :width, 80)
     default_h = Map.get(env, :height, 24)
 
-    terminal_size() || io_size() || {default_w, default_h}
+    ratatui_size() || terminal_size() || io_size() || {default_w, default_h}
+  end
+
+  defp ratatui_size do
+    case ExRatatui.terminal_size() do
+      {cols, rows} when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 ->
+        {cols, rows}
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp terminal_size do
@@ -109,20 +140,69 @@ defmodule TodoTxt.Tui do
   # :nouse_stdio d'Editor donne au fils le vrai tty. VISUAL > EDITOR > vi.
   defp edit_external(env), do: Editor.open(env.paths.todo)
 
-  # --- Elm callbacks ---
-  def init(opts) do
+  # --- ExRatatui App callbacks ---
+  def mount(opts) do
+    NifLoader.ensure_loaded()
     env = Keyword.fetch!(opts, :env)
 
     {cols, rows} = detect_dimensions(env)
 
-    env = Map.merge(env, %{width: cols, height: rows})
-    # Seed mtimes : sinon le 1er :tick (2 s) déclenche un reload parasite.
+    env =
+      env
+      |> Map.put_new(:today, Date.utc_today())
+      |> Map.merge(%{width: cols, height: rows})
+
     state = State.new(env) |> State.refresh_mtimes()
-    {:ok, state, [Command.interval(1_000, :tick)]}
+
+    if not Keyword.has_key?(opts, :test_mode) do
+      :timer.send_interval(1_000, :tick)
+    end
+
+    {:ok, state}
   end
 
-  def event_to_msg(%Event.Resize{width: w, height: h}, _s), do: {:msg, {:resize, w, h}}
-  def event_to_msg(%Event.Key{} = ev, state), do: Keys.msg(ev, state.mode) |> wrap()
+  def render(state, frame) do
+    RatatuiRenderer.render(state, frame)
+  end
+
+  def handle_event(event, state) do
+    case event_to_msg(event, state) do
+      {:msg, msg} ->
+        {state2, cmds} = update(msg, state)
+
+        if quit?(cmds) do
+          {:stop, state2}
+        else
+          {:noreply, state2}
+        end
+
+      :ignore ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(msg, state) do
+    {state2, cmds} = update(msg, state)
+
+    if quit?(cmds) do
+      {:stop, state2}
+    else
+      {:noreply, state2}
+    end
+  end
+
+  defp quit?(cmds) do
+    :quit in cmds or
+      Enum.any?(cmds, fn
+        %{type: :quit} -> true
+        _ -> false
+      end)
+  end
+
+  def event_to_msg(%RatatuiEvent.Resize{width: w, height: h}, _s), do: {:msg, {:resize, w, h}}
+  def event_to_msg(%RatatuiEvent.Key{} = ev, state), do: Keys.msg(ev, state.mode) |> wrap()
+  def event_to_msg(%TermUIEvent.Resize{width: w, height: h}, _s), do: {:msg, {:resize, w, h}}
+  def event_to_msg(%TermUIEvent.Key{} = ev, state), do: Keys.msg(ev, state.mode) |> wrap()
   def event_to_msg(_, _), do: :ignore
 
   defp wrap(:ignore), do: :ignore
@@ -258,47 +338,38 @@ defmodule TodoTxt.Tui do
     end
   end
 
-  def decide({:modal_event, %Event.Key{key: :escape}}, s), do: decide(:modal_cancel, s)
+  def decide({:modal_event, ev}, %{modal: %{widget_mod: TextInput} = modal} = s) do
+    case Keys.to_key(ev) do
+      {:key, "esc", _} ->
+        decide(:modal_cancel, s)
 
-  # Vider le champ de saisie avec Ctrl+U ou Ctrl+K
-  def decide(
-        {:modal_event, %Event.Key{key: k, modifiers: mods}},
-        %{modal: %{widget_mod: TextInput} = modal} = s
-      )
-      when k in ["u", "k", :u, :k, ?u, ?k, "U", "K"] do
-    if is_list(mods) and :ctrl in mods do
-      w = TextInput.clear(modal.widget)
-      {%{s | modal: %{modal | widget: w}}, []}
-    else
-      # Pas Ctrl, délègue à l'événement normal
-      {:ok, w2} =
-        modal.widget_mod.handle_event(
-          normalize_key(%Event.Key{key: k, modifiers: mods}),
-          modal.widget
-        )
+      {:key, "enter", _} ->
+        decide(:modal_submit, s)
 
-      {%{s | modal: %{modal | widget: w2}}, []}
+      {:key, k, mods} when k in ["u", "k", "U", "K"] ->
+        if "ctrl" in mods do
+          w = TextInput.clear(modal.widget)
+          {%{s | modal: %{modal | widget: w}}, []}
+        else
+          handle_modal_widget_event(ev, modal, s)
+        end
+
+      _ ->
+        handle_modal_widget_event(ev, modal, s)
     end
   end
 
-  def decide(
-        {:modal_event, %Event.Key{key: :enter}},
-        %{modal: %{widget_mod: TextInput}} = s
-      ),
-      do: decide(:modal_submit, s)
+  def decide({:modal_event, ev}, %{modal: %{widget_mod: _mod} = modal} = s) do
+    case Keys.to_key(ev) do
+      {:key, "esc", _} ->
+        decide(:modal_cancel, s)
 
-  def decide({:modal_event, ev}, %{modal: %{widget: w, widget_mod: mod}} = s) do
-    case mod.handle_event(normalize_key(ev), w) do
-      {:ok, w2} ->
-        {%{s | modal: %{s.modal | widget: w2}}, []}
-
-      {:ok, w2, effects} ->
-        # Widget self-messages (PickList {:select, item} / :cancel) are
-        # {:send, pid, msg} effects; they come back through the root's
-        # handle_info -> update.
-        {%{s | modal: %{s.modal | widget: w2}}, effects || []}
+      _ ->
+        handle_modal_widget_event(ev, modal, s)
     end
   end
+
+  def decide({:modal_event, _ev}, s), do: {s, []}
 
   def decide(:modal_cancel, s), do: {%{s | mode: :normal, modal: nil}, []}
 
@@ -357,6 +428,19 @@ defmodule TodoTxt.Tui do
   # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
   def decide(_, s), do: {s, []}
 
+  defp handle_modal_widget_event(ev, modal, s) do
+    case modal.widget_mod.handle_event(normalize_key(ev), modal.widget) do
+      {:ok, w2} ->
+        {%{s | modal: %{s.modal | widget: w2}}, []}
+
+      {:ok, w2, effects} ->
+        # Widget self-messages (PickList {:select, item} / :cancel) are
+        # {:send, pid, msg} effects; they come back through the root's
+        # handle_info -> update.
+        {%{s | modal: %{s.modal | widget: w2}}, effects || []}
+    end
+  end
+
   defp expand_relative_dates(text, %Date{} = today) do
     tomorrow = Date.add(today, 1)
 
@@ -372,14 +456,58 @@ defmodule TodoTxt.Tui do
 
   defp expand_relative_dates(text, _), do: text
 
+  @special_keys %{
+    "enter" => :enter,
+    "esc" => :escape,
+    "backspace" => :backspace,
+    "delete" => :delete,
+    "left" => :left,
+    "right" => :right,
+    "up" => :up,
+    "down" => :down,
+    "home" => :home,
+    "end" => :end,
+    "tab" => :tab,
+    "page_up" => :page_up,
+    "page_down" => :page_down
+  }
+
   # Printable keys from the real parser carry `key` and `char`; synthetic
   # events (tests) may only set `key` — fill `char` so widgets see input.
   # Modified keys (Ctrl+A-Z reach us as key: "a", char: nil, modifiers: [:ctrl])
   # must NOT get char — they are commands, not text.
-  defp normalize_key(%Event.Key{key: k, char: nil, modifiers: []} = ev) when is_binary(k),
+  defp normalize_key(%RatatuiEvent.Key{code: code, modifiers: mods}) do
+    term_mods = normalize_modifiers(mods)
+
+    case Map.get(@special_keys, code) do
+      nil ->
+        if byte_size(code) >= 1 and :ctrl not in term_mods do
+          %TermUIEvent.Key{key: code, char: code, modifiers: term_mods}
+        else
+          %TermUIEvent.Key{key: code, char: nil, modifiers: term_mods}
+        end
+
+      key_atom ->
+        %TermUIEvent.Key{key: key_atom, modifiers: term_mods}
+    end
+  end
+
+  defp normalize_key(%TermUIEvent.Key{key: k, char: nil, modifiers: []} = ev) when is_binary(k),
     do: %{ev | char: k}
 
   defp normalize_key(ev), do: ev
+
+  defp normalize_modifiers(mods) do
+    (mods || [])
+    |> Enum.map(fn
+      "ctrl" -> :ctrl
+      "shift" -> :shift
+      "alt" -> :alt
+      m when is_atom(m) -> m
+      _ -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
 
   # Re-fetch by `line` : la tâche a pu disparaître via un reload externe
   # pendant que la modale était ouverte (review focus 1). En vue :done,
@@ -549,5 +677,4 @@ defmodule TodoTxt.Tui do
     do: put_list(s, list, r.tasks) |> Map.put(:status, "#{t.line}: #{label}")
 
   def view(state), do: View.render(state)
-  def handle_info(msg, state), do: update(msg, state)
 end

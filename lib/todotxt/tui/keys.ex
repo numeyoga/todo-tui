@@ -1,14 +1,15 @@
 defmodule TodoTxt.Tui.Keys do
   @moduledoc "Keybinding table: Event.Key -> app message, per mode."
 
-  alias TermUI.Event
+  alias ExRatatui.Event.Key, as: RatatuiKey
+  alias TermUI.Event.Key, as: TermUIKey
 
   @normal %{
-    :down => {:nav, 1},
-    :up => {:nav, -1},
-    :tab => :focus_next,
-    :enter => :activate,
-    :escape => :clear_filter
+    "down" => {:nav, 1},
+    "up" => {:nav, -1},
+    "tab" => :focus_next,
+    "enter" => :activate,
+    "esc" => :clear_filter
   }
 
   @normal_chars %{
@@ -35,26 +36,75 @@ defmodule TodoTxt.Tui.Keys do
   }
 
   @doc "Translate a key event to a message for `mode`. :ignore when unbound."
-  def msg(%Event.Key{key: key, modifiers: mods}, :normal)
-      when key in [?\f, "\f"] or key in ["l", "L", :l] do
-    if is_list(mods) and :ctrl in mods do
-      :redraw
-    else
-      if is_binary(key) and mods == [], do: Map.get(@normal_chars, key, :ignore), else: :ignore
+  def msg(key_event, mode) do
+    case to_key(key_event) do
+      {:release, _} -> :ignore
+      {:key, code, mods} -> dispatch(code, mods, mode, key_event)
+      _ -> :ignore
     end
   end
 
-  def msg(%Event.Key{key: key}, :normal) when is_atom(key),
-    do: Map.get(@normal, key, :ignore)
-
-  def msg(%Event.Key{key: key, modifiers: mods}, :normal) when is_binary(key),
-    do: if(mods == [], do: Map.get(@normal_chars, key, :ignore), else: :ignore)
-
-  def msg(%Event.Key{key: key, modifiers: mods} = ev, :input)
-      when key in [?\f, "\f"] or key in ["l", "L", :l] do
-    if is_list(mods) and :ctrl in mods, do: :redraw, else: {:modal_event, ev}
+  defp dispatch(code, mods, :normal, _orig) when code in ["l", "L"] do
+    if "ctrl" in mods, do: :redraw, else: Map.get(@normal_chars, code, :ignore)
   end
 
-  def msg(%Event.Key{} = ev, :input), do: {:modal_event, ev}
-  def msg(_, _), do: :ignore
+  defp dispatch(code, [], :normal, _orig) do
+    Map.get(@normal, code) || Map.get(@normal_chars, code, :ignore)
+  end
+
+  defp dispatch(code, ["shift"], :normal, _orig)
+       when code in ["A", "P", "R", "L", "E", "?"] do
+    Map.get(@normal_chars, code, :ignore)
+  end
+
+  defp dispatch(_code, _mods, :normal, _orig), do: :ignore
+
+  defp dispatch(code, mods, :input, orig) when code in ["l", "L"] do
+    if "ctrl" in mods, do: :redraw, else: {:modal_event, orig}
+  end
+
+  defp dispatch(_code, _mods, :input, orig), do: {:modal_event, orig}
+
+  @term_code_map %{
+    down: "down",
+    up: "up",
+    tab: "tab",
+    enter: "enter",
+    escape: "esc",
+    end: "end",
+    home: "home"
+  }
+
+  def to_key(%RatatuiKey{kind: "release"}), do: {:release, nil}
+
+  def to_key(%RatatuiKey{code: code, modifiers: mods}) do
+    {:key, code, mods || []}
+  end
+
+  def to_key(%TermUIKey{key: key, modifiers: mods}) do
+    {:key, term_key_code(key), term_mods_to_strings(mods)}
+  end
+
+  def to_key(_), do: :unknown
+
+  defp term_key_code(key) do
+    Map.get_lazy(@term_code_map, key, fn ->
+      case key do
+        k when is_binary(k) -> k
+        k when is_atom(k) -> Atom.to_string(k)
+        k when is_integer(k) -> <<k::utf8>>
+      end
+    end)
+  end
+
+  defp term_mods_to_strings(mods) do
+    mods
+    |> List.wrap()
+    |> Enum.map(fn
+      :ctrl -> "ctrl"
+      :shift -> "shift"
+      :alt -> "alt"
+      s when is_binary(s) -> s
+    end)
+  end
 end

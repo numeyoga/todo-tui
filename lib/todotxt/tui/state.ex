@@ -5,6 +5,7 @@ defmodule TodoTxt.Tui.State do
 
   defstruct paths: nil,
             today: nil,
+            now: nil,
             tasks: [],
             done_tasks: [],
             view: :todo,
@@ -34,6 +35,7 @@ defmodule TodoTxt.Tui.State do
     %__MODULE__{
       paths: Map.get(env, :paths),
       today: Map.get(env, :today),
+      now: Map.get(env, :now),
       tasks: Map.get(env, :tasks, []),
       done_tasks: Map.get(env, :done_tasks, []),
       caller: Map.get(env, :caller),

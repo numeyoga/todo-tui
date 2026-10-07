@@ -28,8 +28,14 @@ defmodule TodoTxt.Format do
   is set, or `TERM` is unset/`dumb`. Shared with the TUI palette.
   """
   def colors_enabled?(opts) do
-    !opts[:plain] and is_nil(System.get_env("NO_COLOR")) and
-      System.get_env("TERM") not in [nil, "dumb"]
+    term = System.get_env("TERM")
+
+    !opts[:plain] and is_nil(System.get_env("NO_COLOR")) and term != "dumb" and
+      (windows?() or not is_nil(term))
+  end
+
+  defp windows? do
+    match?({:win32, _}, :os.type()) or is_binary(System.get_env("WT_SESSION"))
   end
 
   def tasks(tasks, opts) do

@@ -31,6 +31,11 @@ defmodule TodoTxt.EditorTest do
       System.put_env("EDITOR", "nano")
       assert Editor.resolve() == "nano"
     end
+
+    test "default_editor returns notepad on win32 and vi elsewhere" do
+      expected = if match?({:win32, _}, :os.type()), do: "notepad", else: "vi"
+      assert Editor.default_editor() == expected
+    end
   end
 
   describe "split/1" do

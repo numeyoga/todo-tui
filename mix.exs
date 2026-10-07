@@ -31,6 +31,7 @@ defmodule TodoTxt.MixProject do
     [
       {:jason, "~> 1.4"},
       {:term_ui, "~> 1.0"},
+      {:ex_ratatui, "~> 0.17"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}

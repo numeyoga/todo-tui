@@ -58,11 +58,11 @@ defmodule TodoTxt.Tui.View do
     scope = if s.local, do: "[LOCAL]", else: "[GLOBAL]"
     counts = State.counts(s)
     stats_text = "#{counts.open} ouvertes / #{counts.open + counts.done} total "
-    date_str = "📅 " <> Date.to_iso8601(s.today)
+    datetime_str = "📅 " <> current_date_str(s) <> " " <> current_time_str(s)
 
     {center_part, stats} =
       cond do
-        width >= 75 -> {date_str, stats_text}
+        width >= 75 -> {datetime_str, stats_text}
         width >= 50 -> {"", stats_text}
         true -> {"", ""}
       end
@@ -89,6 +89,42 @@ defmodule TodoTxt.Tui.View do
     line2 = text(build_top_separator(s), dim(s))
 
     stack(:vertical, [line1, line2])
+  end
+
+  defp current_date_str(s) do
+    case Map.get(s, :today) do
+      %Date{} = d ->
+        Date.to_iso8601(d)
+
+      d when is_binary(d) ->
+        d
+
+      nil ->
+        case Map.get(s, :now) do
+          %DateTime{} = dt -> Date.to_iso8601(DateTime.to_date(dt))
+          %NaiveDateTime{} = ndt -> Date.to_iso8601(NaiveDateTime.to_date(ndt))
+          _ -> Date.to_iso8601(Date.utc_today())
+        end
+    end
+  end
+
+  defp current_time_str(s) do
+    case Map.get(s, :now) do
+      nil ->
+        Calendar.strftime(NaiveDateTime.local_now(), "%H:%M")
+
+      %Time{} = t ->
+        Calendar.strftime(t, "%H:%M")
+
+      %NaiveDateTime{} = ndt ->
+        Calendar.strftime(ndt, "%H:%M")
+
+      %DateTime{} = dt ->
+        Calendar.strftime(dt, "%H:%M")
+
+      str when is_binary(str) ->
+        str
+    end
   end
 
   defp build_top_separator(s) do
@@ -1036,9 +1072,9 @@ defmodule TodoTxt.Tui.View do
     end
   end
 
-  defp statusline_height(%{mode: :input}), do: 3
+  def statusline_height(%{mode: :input}), do: 3
 
-  defp statusline_height(s) do
+  def statusline_height(s) do
     2 + length(shortcuts_lines(s))
   end
 

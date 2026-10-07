@@ -41,6 +41,16 @@ defmodule TodoTxt.FormatTest do
     System.delete_env("NO_COLOR")
   end
 
+  test "colors are enabled in Windows Terminal (WT_SESSION) even when TERM is unset" do
+    System.delete_env("TERM")
+    System.delete_env("NO_COLOR")
+    System.put_env("WT_SESSION", "some-guid")
+
+    assert Format.colors_enabled?(%{plain: false})
+  after
+    System.delete_env("WT_SESSION")
+  end
+
   test "task_map returns a JSON-encodable map" do
     [t] = Parser.parse_all("x 2026-09-20 2026-09-01 call mom +fam @home k:v")
     m = Format.task_map(t)

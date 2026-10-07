@@ -35,6 +35,12 @@ defmodule TodoTxt.TuiTest do
     {s3, []} = Tui.update({:nav, -1}, s2)
     assert s3.list_idx == 0
     assert {:msg, {:nav, 1}} = Tui.event_to_msg(Event.key(:down), s)
+
+    # ExRatatui.Event.Key
+    assert {:msg, {:nav, 1}} = Tui.event_to_msg(%ExRatatui.Event.Key{code: "j"}, s)
+    assert {:msg, {:nav, 1}} = Tui.event_to_msg(%ExRatatui.Event.Key{code: "down"}, s)
+    assert {:msg, {:nav, -1}} = Tui.event_to_msg(%ExRatatui.Event.Key{code: "up"}, s)
+    assert {:msg, :quit} = Tui.event_to_msg(%ExRatatui.Event.Key{code: "q"}, s)
   end
 
   test "Tab toggles focus, Enter applies sidebar item" do

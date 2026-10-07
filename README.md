@@ -8,7 +8,9 @@ interactive full-screen TUI (`--tui`).
 
 ## Build & install
 
-Requires Elixir ~> 1.18 and Erlang/OTP.
+Requires Elixir ~> 1.18 and Erlang/OTP. Cross-platform support for Linux, macOS, and native Windows PowerShell (via `ex_ratatui` and precompiled NIFs).
+
+### Linux & macOS
 
 ```sh
 mix deps.get
@@ -17,6 +19,20 @@ mix escript.build        # produces ./todo
 
 # or install into ~/.mix/escripts (make sure it's on your PATH)
 mix escript.install
+```
+
+### Windows (PowerShell & Windows Terminal)
+
+```powershell
+mix deps.get
+mix escript.build        # produces .\todo
+
+# Run with the PowerShell launcher:
+.\bin\todo.ps1 help
+.\bin\todo.ps1 --tui
+
+# Or directly via escript:
+escript .\todo --tui
 ```
 
 Full user documentation (in French): [docs/GUIDE.md](docs/GUIDE.md).
@@ -144,13 +160,16 @@ Paths are resolved in this order (first wins):
 2. CLI flag `-l` / `--local` (uses `todo.txt`, `done.txt`, `report.txt` in the current directory)
 3. Env vars `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
 4. `TODOTXT_DIR` (applies to both files and `report.txt`)
-5. `TODO_DIR=` in the config file `$XDG_CONFIG_HOME/todotxt/config`
-   (`KEY=value` lines)
-6. XDG default: `$XDG_DATA_HOME/todo/` (i.e. `~/.local/share/todo/`)
+5. `TODO_DIR=` in the config file:
+   - Linux / macOS: `$XDG_CONFIG_HOME/todotxt/config` (or `~/.config/todotxt/config`)
+   - Windows: `%APPDATA%\todotxt\config`
+6. Default data directory:
+   - Linux / macOS: `$XDG_DATA_HOME/todo/` (i.e. `~/.local/share/todo/`)
+   - Windows: `%LOCALAPPDATA%\todo\` (or `%APPDATA%\todo\`)
 
 `done.txt` can be relocated independently via `-d` /
 `TODOTXT_DONE_FILE`; `report.txt` follows the data directory
-(`TODOTXT_DIR` / `TODO_DIR` / XDG).
+(`TODOTXT_DIR` / `TODO_DIR` / XDG / AppData).
 
 ### Environment variables
 
@@ -160,9 +179,9 @@ Paths are resolved in this order (first wins):
 | `TODOTXT_TODO_FILE` | Explicit path to `todo.txt` |
 | `TODOTXT_DONE_FILE` | Explicit path to `done.txt` |
 | `NO_COLOR` | When set (any value), disables colors (TUI included) |
-| `TERM` | `dumb`/unset also disables colors |
+| `TERM` | `dumb`/unset disables colors (except on Windows with `WT_SESSION`, ConEmu, or ANSICON where ANSI colors are active) |
 | `VISUAL` | Editor for `todo edit` and the TUI's `E` key (wins over `EDITOR`) |
-| `EDITOR` | Editor for `todo edit` and `E` — may include args, e.g. `code --wait` (default `vi`) |
+| `EDITOR` | Editor for `todo edit` and `E` — may include args, e.g. `code --wait` (default: `notepad` on Windows, `vi` elsewhere) |
 
 ## Extensions
 

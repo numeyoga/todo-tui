@@ -10,10 +10,16 @@ defmodule TodoTxt.Editor do
   vim and nano work.
   """
 
-  @doc "The editor command line: `$VISUAL`, `$EDITOR`, or `\"vi\"`."
+  @doc """
+  The editor command line: `$VISUAL`, `$EDITOR`, or fallback ("notepad" on Windows, "vi" elsewhere).
+  """
   @spec resolve() :: String.t()
   def resolve do
-    Enum.find_value(["VISUAL", "EDITOR"], "vi", &env_editor/1)
+    Enum.find_value(["VISUAL", "EDITOR"], default_editor(), &env_editor/1)
+  end
+
+  def default_editor do
+    if match?({:win32, _}, :os.type()), do: "notepad", else: "vi"
   end
 
   defp env_editor(var) do

@@ -12,8 +12,9 @@ fichiers conformes XDG.
 
 ### Depuis les sources
 
-Prérequis : Elixir ~> 1.18 et Erlang/OTP.
+Prérequis : Elixir ~> 1.18 et Erlang/OTP. Compatible Linux, macOS et Windows (PowerShell natif via `ex_ratatui`).
 
+Sur Linux / macOS :
 ```sh
 git clone <url-du-depot> todotxt
 cd todotxt
@@ -22,13 +23,23 @@ mix escript.build      # produit l'exécutable ./todo
 ./todo help
 ```
 
+Sur Windows (PowerShell & Windows Terminal) :
+```powershell
+git clone <url-du-depot> todotxt
+cd todotxt
+mix deps.get
+mix escript.build      # produit .\todo
+.\bin\todo.ps1 help
+.\bin\todo.ps1 --tui
+```
+
 ### Installation dans le PATH
 
 ```sh
 mix escript.install    # installe dans ~/.mix/escripts
 ```
 
-Assurez-vous que `~/.mix/escripts` est dans votre `PATH`. Vous pouvez
+Assurez-vous que `~/.mix/escripts` (ou `%USERPROFILE%\.mix\escripts` sous Windows) est dans votre `PATH`. Vous pouvez
 aussi simplement copier le fichier `todo` n'importe où — c'est un
 escript autonome (Erlang/OTP doit être installé sur la machine).
 
@@ -355,13 +366,22 @@ Une valeur `recur:` malformée produit une erreur sans toucher au fichier.
 
 ## 8. Fichiers et configuration
 
-### Emplacements par défaut (XDG)
+### Emplacements par défaut
 
+**Linux & macOS (XDG)** :
 ```
 $XDG_DATA_HOME/todo/todo.txt      →  ~/.local/share/todo/todo.txt
 $XDG_DATA_HOME/todo/done.txt      →  ~/.local/share/todo/done.txt
 $XDG_DATA_HOME/todo/report.txt    →  ~/.local/share/todo/report.txt
 $XDG_CONFIG_HOME/todotxt/config   →  ~/.config/todotxt/config
+```
+
+**Windows** :
+```
+%LOCALAPPDATA%\todo\todo.txt      →  C:\Users\<user>\AppData\Local\todo\todo.txt
+%LOCALAPPDATA%\todo\done.txt      →  C:\Users\<user>\AppData\Local\todo\done.txt
+%LOCALAPPDATA%\todo\report.txt    →  C:\Users\<user>\AppData\Local\todo\report.txt
+%APPDATA%\todotxt\config          →  C:\Users\<user>\AppData\Roaming\todotxt\config
 ```
 
 Les fichiers sont créés à la première écriture si nécessaire.
@@ -374,12 +394,12 @@ Le premier qui gagne :
 2. Flag local : `todo -l` / `todo --local` (utilise `todo.txt`, `done.txt`, `report.txt` dans le répertoire courant)
 3. Variables : `TODOTXT_TODO_FILE`, `TODOTXT_DONE_FILE`
 4. `TODOTXT_DIR` : un répertoire pour `todo.txt` + `done.txt` + `report.txt`
-5. `TODO_DIR=` dans le fichier de config
-6. Défaut XDG ci-dessus
+5. `TODO_DIR=` dans le fichier de config (`~/.config/todotxt/config` ou `%APPDATA%\todotxt\config`)
+6. Défaut système ci-dessus
 
 `--done-file` et `TODOTXT_DONE_FILE` permettent de placer `done.txt`
 indépendamment de `todo.txt`. `report.txt` suit le répertoire de données
-(`TODOTXT_DIR` / `TODO_DIR` / XDG).
+(`TODOTXT_DIR` / `TODO_DIR` / XDG / AppData).
 
 ### Fichier de config
 

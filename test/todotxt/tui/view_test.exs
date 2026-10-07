@@ -215,6 +215,18 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(texts(View.render(s_global)), &String.contains?(&1, "[GLOBAL]"))
   end
 
+  test "header renders current date and time HH:MM with explicit now" do
+    s = st([t("a", 1)], width: 80, today: ~D[2026-10-07], now: ~T[14:30:00])
+    all_text = texts(View.render(s))
+    assert Enum.any?(all_text, &String.contains?(&1, "📅 2026-10-07 14:30"))
+  end
+
+  test "header renders current date and formatted time HH:MM by default" do
+    s = st([t("a", 1)], width: 80, today: ~D[2026-10-07])
+    all_text = texts(View.render(s))
+    assert Enum.any?(all_text, &Regex.match?(~r/📅 2026-10-07 \d{2}:\d{2}/, &1))
+  end
+
   test "visual delimitations include vertical separator bars and horizontal rule" do
     s = st([t("a", 1)])
     all_text = texts(View.render(s))

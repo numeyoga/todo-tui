@@ -27,8 +27,21 @@ defmodule TodoTxt.Config do
   end
 
   defp default_data_dir do
-    data = System.get_env("XDG_DATA_HOME") || Path.join(System.user_home!(), ".local/share")
-    Path.join(data, "todo")
+    win? = match?({:win32, _}, :os.type())
+
+    cond do
+      data = System.get_env("XDG_DATA_HOME") ->
+        Path.join(data, "todo")
+
+      win? and is_binary(System.get_env("LOCALAPPDATA")) ->
+        Path.join(System.get_env("LOCALAPPDATA"), "todo")
+
+      win? and is_binary(System.get_env("APPDATA")) ->
+        Path.join(System.get_env("APPDATA"), "todo")
+
+      true ->
+        Path.join([System.user_home!(), ".local/share", "todo"])
+    end
   end
 
   defp resolve_file(opts, opt_key, env_var, fallback) do
@@ -41,7 +54,20 @@ defmodule TodoTxt.Config do
 
   @spec load_file() :: %{String.t() => String.t()}
   def load_file do
-    cfg = System.get_env("XDG_CONFIG_HOME") || Path.join(System.user_home!(), ".config")
+    win? = match?({:win32, _}, :os.type())
+
+    cfg =
+      cond do
+        env = System.get_env("XDG_CONFIG_HOME") ->
+          env
+
+        win? and is_binary(System.get_env("APPDATA")) ->
+          System.get_env("APPDATA")
+
+        true ->
+          Path.join(System.user_home!(), ".config")
+      end
+
     path = Path.join(cfg, "todotxt/config")
 
     case File.read(path) do
