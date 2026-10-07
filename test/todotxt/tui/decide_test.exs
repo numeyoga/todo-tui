@@ -110,4 +110,40 @@ defmodule TodoTxt.Tui.DecideTest do
     {s2, []} = Tui.decide({:modal_event, key_ev}, s)
     assert TextInput.get_value(s2.modal.widget) == ""
   end
+
+  test "open_modal :tag opens modal with line and prompt" do
+    s = state([t("buy milk", 1)])
+    assert {s2, []} = Tui.decide({:open_modal, :tag}, s)
+    assert s2.mode == :input
+    assert s2.modal.action == :tag
+    assert s2.modal.line == 1
+  end
+
+  test "modal_submit :tag updates tags on task" do
+    s = state([t("buy milk due:2026-10-01", 1)])
+    modal = Modal.open(:tag, s)
+    {:ok, w} = TextInput.init(TextInput.new(value: "due:2026-10-15 count:3", width: 80))
+    s = %{s | mode: :input, modal: %{modal | widget: w}}
+
+    assert {s2, [{:persist, :edit, %{op: {:replace_text, new_raw}, label: "tag"}}, {:sync, 1}]} =
+             Tui.decide(:modal_submit, s)
+
+    assert s2.mode == :normal
+    assert is_nil(s2.modal)
+    assert new_raw =~ "due:2026-10-15"
+    assert new_raw =~ "count:3"
+  end
+
+  test "modal_submit :tag removes tag with -prefix" do
+    s = state([t("buy milk due:2026-10-01 id:42", 1)])
+    modal = Modal.open(:tag, s)
+    {:ok, w} = TextInput.init(TextInput.new(value: "-due", width: 80))
+    s = %{s | mode: :input, modal: %{modal | widget: w}}
+
+    assert {_, [{:persist, :edit, %{op: {:replace_text, new_raw}}}, _]} =
+             Tui.decide(:modal_submit, s)
+
+    refute new_raw =~ "due:2026-10-01"
+    assert new_raw =~ "id:42"
+  end
 end

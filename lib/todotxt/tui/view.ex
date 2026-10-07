@@ -165,6 +165,10 @@ defmodule TodoTxt.Tui.View do
     render_filter_modal(s, m)
   end
 
+  defp body(%{mode: :input, modal: %{widget_mod: TextInput, action: :tag} = m} = s) do
+    render_tag_modal(s, m)
+  end
+
   defp body(%{mode: :input, modal: %{widget_mod: TextInput, action: a} = m} = s)
        when a in [:add, :edit, :append, :prepend] do
     render_input_modal(s, m)
@@ -772,6 +776,102 @@ defmodule TodoTxt.Tui.View do
     stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
   end
 
+  defp render_tag_modal(s, modal) do
+    modal_w = min(max(round(s.width * 0.65), 66), 84)
+    inner_w = modal_w - 6
+    inner_input_w = inner_w - 2
+    title = action_title(:tag, modal) <> " [INS]"
+    border_style = accent(s)
+
+    top_border =
+      "╭─ #{title} " <> String.duplicate("─", max(0, modal_w - String.length(title) - 5)) <> "╮"
+
+    bot_border = "╰" <> String.duplicate("─", modal_w - 2) <> "╯"
+
+    input_node =
+      TextInput.render(%{modal.widget | width: inner_input_w}, %{
+        width: inner_input_w,
+        height: 1
+      })
+      |> fix_cursor_node(inner_input_w)
+
+    row_helper = fn label_node, label_text ->
+      len = String.length(label_text)
+      pad = max(0, inner_w - len)
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        label_node,
+        text(String.duplicate(" ", pad), nil),
+        text("  │", border_style)
+      ])
+    end
+
+    modal_rows = [
+      text(top_border, border_style),
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ]),
+      row_helper.(
+        text("Modifier les métadonnées (clé:valeur ou -clé) :", border_style),
+        "Modifier les métadonnées (clé:valeur ou -clé) :"
+      ),
+      stack(:horizontal, [
+        text("│  > ", border_style),
+        input_node,
+        text("  │", border_style)
+      ]),
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ]),
+      row_helper.(text("Exemples :", border_style), "Exemples :"),
+      row_helper.(
+        text("  • due:YYYY-MM-DD    Échéance (ex: due:today)", Style.new(fg: :red)),
+        "  • due:YYYY-MM-DD    Échéance (ex: due:today)"
+      ),
+      row_helper.(
+        text("  • count:N / min:N   Compteur ou durée (minutes)", Style.new(fg: :yellow)),
+        "  • count:N / min:N   Compteur ou durée (minutes)"
+      ),
+      row_helper.(
+        text("  • id:ID / dep:ID    Identifiant et dépendances", Style.new(fg: :blue)),
+        "  • id:ID / dep:ID    Identifiant et dépendances"
+      ),
+      row_helper.(
+        text("  • -clé              Supprime le tag (ex: -due, -dep)", dim(s)),
+        "  • -clé              Supprime le tag (ex: -due, -dep)"
+      ),
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ]),
+      row_helper.(
+        text("[Ctrl+U] Vider   [Entrée] Appliquer   [Échap] Annuler", dim(s)),
+        "[Ctrl+U] Vider   [Entrée] Appliquer   [Échap] Annuler"
+      ),
+      text(bot_border, border_style)
+    ]
+
+    box_h = length(modal_rows)
+    top_pad = max(div(max(s.height - 5, 4) - box_h, 2), 0)
+    left_pad = max(div(s.width - modal_w, 2), 1)
+
+    padded_box =
+      Enum.map(modal_rows, fn row ->
+        stack(:horizontal, [
+          text(String.duplicate(" ", left_pad), nil),
+          row
+        ])
+      end)
+
+    stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
+  end
+
   defp render_input_modal(s, modal) do
     modal_w = min(max(round(s.width * 0.70), 56), 96)
     inner_w = modal_w - 6
@@ -1062,6 +1162,7 @@ defmodule TodoTxt.Tui.View do
   defp do_fix_cursor_node(node, _target_w), do: node
 
   defp action_title(:add, _m), do: "NOUVELLE TÂCHE"
+  defp action_title(:tag, m), do: "ÉDITER LES TAGS ##{m[:line]}"
   defp action_title(:edit, m), do: "MODIFIER LA TÂCHE ##{m[:line]}"
   defp action_title(:append, m), do: "AJOUTER À LA FIN ##{m[:line]}"
   defp action_title(:prepend, m), do: "AJOUTER AU DÉBUT ##{m[:line]}"
@@ -1147,7 +1248,7 @@ defmodule TodoTxt.Tui.View do
   end
 
   defp statusline(%{mode: :input, modal: %{widget_mod: TextInput, action: a}} = s)
-       when a in [:add, :edit, :append, :prepend] do
+       when a in [:add, :edit, :append, :prepend, :tag] do
     sep = text(build_separator(s), dim(s))
     action_label = action_title(a, s.modal)
     scope = if s.local, do: "[LOCAL]", else: "[GLOBAL]"

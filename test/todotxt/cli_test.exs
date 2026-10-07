@@ -587,6 +587,33 @@ defmodule TodoTxt.CLITest do
     assert out == "1: plain\n2: (B) b"
   end
 
+  test "tag adds and updates tags on a task", %{env: e} do
+    File.write!(e.paths.todo, "Buy milk\n")
+    assert {:ok, out} = CLI.run(["tag", "1", "due", "2026-10-15"], e)
+    assert out =~ "due:2026-10-15"
+    assert {:ok, out2} = CLI.run(["tag", "1", "id:100", "count:2"], e)
+    assert out2 =~ "id:100"
+    assert out2 =~ "count:2"
+  end
+
+  test "untag removes tags from a task", %{env: e} do
+    File.write!(e.paths.todo, "Buy milk due:2026-10-15 id:100\n")
+    assert {:ok, out} = CLI.run(["untag", "1", "due"], e)
+    refute out =~ "due:2026-10-15"
+    assert out =~ "id:100"
+  end
+
+  test "listtags lists all unique tags across tasks", %{env: e} do
+    File.write!(e.paths.todo, "Task 1 due:2026-10-15 id:1\nTask 2 min:30 id:2\n")
+    File.write!(e.paths.done, "x 2026-10-01 Done task count:3\n")
+    assert {:ok, out} = CLI.run(["listtags"], e)
+    tags = String.split(out, "\n")
+    assert "count" in tags
+    assert "due" in tags
+    assert "id" in tags
+    assert "min" in tags
+  end
+
   defp dir_of(env), do: Path.dirname(env.paths.todo)
 
   defp restore_env(k, nil), do: System.delete_env(k)

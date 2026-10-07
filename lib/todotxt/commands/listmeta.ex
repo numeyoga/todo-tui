@@ -9,6 +9,7 @@ defmodule TodoTxt.Commands.ListMeta do
 
   def run(["proj" | _], ctx), do: list(ctx, & &1.projects)
   def run(["con" | _], ctx), do: list(ctx, & &1.contexts)
+  def run(["tag" | _], ctx), do: list(ctx, fn t -> Map.keys(t.tags) end)
 
   def run(["pri", p], ctx) do
     with [c] <- String.to_charlist(p), true <- c in ?A..?Z do
@@ -19,7 +20,7 @@ defmodule TodoTxt.Commands.ListMeta do
     end
   end
 
-  def run(_, _), do: {:usage, "todo listproj|listcon|listpri [A-Z]"}
+  def run(_, _), do: {:usage, "todo listproj|listcon|listpri [A-Z]|listtags"}
 
   defp list(%{tasks: t, done_tasks: d, opts: opts}, fun) do
     vals = (t ++ d) |> Enum.flat_map(fun) |> Enum.uniq() |> Enum.sort()

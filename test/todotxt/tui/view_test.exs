@@ -372,4 +372,15 @@ defmodule TodoTxt.Tui.ViewTest do
              end)
     end
   end
+
+  test "tag modal renders floating window with help examples" do
+    s = st([t("task 1", 1)], width: 80, height: 24, mode: :input)
+    s = %{s | modal: Modal.open(:tag, s)}
+    rendered = View.render(s)
+    all_text = texts(rendered)
+
+    assert Enum.any?(all_text, &String.contains?(&1, "ÉDITER LES TAGS #1"))
+    assert Enum.any?(all_text, &String.contains?(&1, "due:YYYY-MM-DD"))
+    assert Enum.any?(all_text, &String.contains?(&1, "count:N / min:N"))
+  end
 end

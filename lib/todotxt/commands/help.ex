@@ -32,7 +32,12 @@ defmodule TodoTxt.Commands.Help do
       due                    tasks bucketed by due: date
       agenda                 next 14 days + upcoming t: thresholds
 
-    Extensions:
+    Extensions & Addons:
+      tag N KEY VALUE        add or update tag on task N
+      untag N KEY...         remove tags from task N
+      listtags|lstag         list all tags
+      note [show|edit] N     manage notes for task N
+      min N [+|-]MINUTES     track elapsed time
       listaddons             list addons (unsupported)
 
     Maintenance:

@@ -163,9 +163,24 @@ defmodule TodoTxt.Task do
   defp parse_date(v) when is_binary(v), do: Date.from_iso8601(v)
   defp parse_date(_), do: :error
 
-  defp remove_tag(desc, key) do
+  @doc "Puts or updates a tag key:value on task `t`."
+  def put_tag(%__MODULE__{} = t, key, value) do
+    desc = update_tag(t.description, key, value)
+    reparse(%{t | description: desc})
+  end
+
+  @doc "Removes tag `key:` from task `t`."
+  def delete_tag(%__MODULE__{} = t, key) do
+    desc = remove_tag(t.description, key)
+    reparse(%{t | description: desc})
+  end
+
+  @doc "Removes tag `key:` from text description."
+  def remove_tag(desc, key) do
+    re = Regex.compile!("\\s*\\b#{Regex.escape(key)}:\\S+")
+
     desc
-    |> String.replace(~r/\s*\b#{key}:\S+/, "")
+    |> String.replace(re, "")
     |> String.trim()
   end
 
@@ -174,8 +189,9 @@ defmodule TodoTxt.Task do
   defp shift(d, n, "m"), do: Date.shift(d, month: n)
   defp shift(d, n, "y"), do: Date.shift(d, year: n)
 
-  defp update_tag(desc, key, value) do
-    re = ~r/\b#{key}:\S+/
+  @doc "Adds or replaces tag `key:value` in text description."
+  def update_tag(desc, key, value) do
+    re = Regex.compile!("\\b#{Regex.escape(key)}:\\S+")
 
     if Regex.match?(re, desc),
       do: Regex.replace(re, desc, "#{key}:#{value}"),

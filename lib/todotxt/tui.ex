@@ -23,7 +23,7 @@ defmodule TodoTxt.Tui do
   alias TermUI.Event, as: TermUIEvent
   alias TermUI.Renderer.{Buffer, BufferManager}
   alias TermUI.Widgets.TextInput
-  alias TodoTxt.{Editor, Format, Notes, Tasks}
+  alias TodoTxt.{Editor, Format, Notes, Parser, Task, Tasks}
   alias TodoTxt.Tui.{Keys, Modal, NifLoader, RatatuiRenderer, State, View}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
@@ -281,7 +281,7 @@ defmodule TodoTxt.Tui do
   def decide(:move, %{focus: :sidebar} = s), do: {s, []}
 
   def decide({:open_modal, action}, %{focus: :sidebar} = s)
-      when action in [:add, :edit, :append, :prepend, :del, :pri],
+      when action in [:add, :edit, :append, :prepend, :del, :pri, :tag],
       do: {s, []}
 
   # En vue :done, la sélection vient de done_tasks — done.txt est positionnel,
@@ -380,7 +380,7 @@ defmodule TodoTxt.Tui do
   end
 
   def decide({:open_modal, action}, s) do
-    needs_task = action in [:edit, :append, :prepend, :del, :pri]
+    needs_task = action in [:edit, :append, :prepend, :del, :pri, :tag]
 
     if needs_task and is_nil(State.selected_task(s)) do
       {s, []}
@@ -448,6 +448,19 @@ defmodule TodoTxt.Tui do
       {:prepend, text} ->
         mutate_line(s, modal.line, {:prepend_text, text}, "prepended")
 
+      {:tag, text} ->
+        list = if s.view == :done, do: :done, else: :todo
+
+        case Enum.find(list_tasks(s, list), &(&1.line == modal.line)) do
+          nil ->
+            {s, []}
+
+          task ->
+            new_t = apply_tag_tokens(task, String.split(text, ~r/\s+/, trim: true))
+            new_raw = Parser.render(new_t)
+            mutate_line(s, modal.line, {:replace_text, new_raw}, "tag")
+        end
+
       _ ->
         {s, []}
     end
@@ -506,6 +519,33 @@ defmodule TodoTxt.Tui do
   end
 
   defp expand_relative_dates(text, _), do: text
+
+  defp apply_tag_tokens(task, []), do: task
+
+  defp apply_tag_tokens(task, [token | rest]) do
+    cond do
+      String.starts_with?(token, "-") or String.starts_with?(token, "!") ->
+        key = token |> String.slice(1..-1//1) |> String.trim_trailing(":")
+        apply_tag_tokens(Task.delete_tag(task, key), rest)
+
+      String.contains?(token, ":") ->
+        case String.split(token, ":", parts: 2) do
+          [k, v] when k != "" and v != "" ->
+            apply_tag_tokens(Task.put_tag(task, k, v), rest)
+
+          _ ->
+            apply_tag_tokens(task, rest)
+        end
+
+      rest != [] and not String.contains?(hd(rest), ":") and
+          not (String.starts_with?(hd(rest), "-") or String.starts_with?(hd(rest), "!")) ->
+        [val | rest2] = rest
+        apply_tag_tokens(Task.put_tag(task, token, val), rest2)
+
+      true ->
+        apply_tag_tokens(task, rest)
+    end
+  end
 
   @special_keys %{
     "enter" => :enter,

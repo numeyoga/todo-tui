@@ -8,7 +8,7 @@ defmodule TodoTxt.Tui.Modal do
   alias TodoTxt.Tui.State
 
   @help_text "j/k nav · Tab focus · Enter applique · x/space do-undo · a add · " <>
-               "e edit · A/P append/prepend · p prio · d del · m move · " <>
+               "e edit · A/P append/prepend · p prio · t tag · d del · m move · " <>
                "R archive · L scope · H hidden · N note · / filter · E $EDITOR · r reload · ^L redessiner · Esc annule · q quit"
 
   @doc "Modal map `%{action:, widget:, widget_mod:}` (+`:line` when task-bound)."
@@ -20,6 +20,11 @@ defmodule TodoTxt.Tui.Modal do
   def open(:edit, s),
     do:
       text_modal(:edit, selected_raw(s), "Edit: ", Map.get(s, :width, 80))
+      |> with_line(s)
+
+  def open(:tag, s),
+    do:
+      text_modal(:tag, "", "Tag: ", Map.get(s, :width, 80))
       |> with_line(s)
 
   def open(:append, s),
