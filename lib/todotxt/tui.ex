@@ -23,7 +23,7 @@ defmodule TodoTxt.Tui do
   alias TermUI.Event, as: TermUIEvent
   alias TermUI.Renderer.{Buffer, BufferManager}
   alias TermUI.Widgets.TextInput
-  alias TodoTxt.{Editor, Format, Tasks}
+  alias TodoTxt.{Editor, Format, Notes, Tasks}
   alias TodoTxt.Tui.{Keys, Modal, NifLoader, RatatuiRenderer, State, View}
 
   @doc "Runs the TUI; loops for external $EDITOR sessions. Returns {:ok, nil} | {:error, msg}."
@@ -124,6 +124,17 @@ defmodule TodoTxt.Tui do
             # avant de relancer, sinon env.tasks/done_tasks restent ceux
             # d'avant l'édition et la prochaine mutation écraserait ses
             # changements (refresh_mtimes neutralise en plus le watch).
+            with {:ok, lists} <- Tasks.load(env.io, env.paths) do
+              run(Map.merge(env, lists))
+            end
+
+          {:error, m} ->
+            {:error, m}
+        end
+
+      {:tui_exit, {:edit_note, note_path}} ->
+        case Editor.edit(note_path) do
+          :ok ->
             with {:ok, lists} <- Tasks.load(env.io, env.paths) do
               run(Map.merge(env, lists))
             end
@@ -333,6 +344,39 @@ defmodule TodoTxt.Tui do
   def decide(:edit_external, s) do
     notify = if s.caller, do: [{:send, s.caller, {:tui_exit, :edit}}], else: []
     {s, notify ++ [Command.quit()]}
+  end
+
+  def decide(:edit_note, s) do
+    case State.selected_task(s) do
+      nil ->
+        {s, []}
+
+      t ->
+        {note_path, maybe_updated_t} = Notes.ensure_note_file(s.paths.todo, t)
+
+        effects =
+          if maybe_updated_t do
+            [
+              {:persist, :edit,
+               %{
+                 list: :todo,
+                 task: t,
+                 op: {:replace_text, maybe_updated_t.raw},
+                 label: "note ajoutée"
+               }},
+              :sync
+            ]
+          else
+            []
+          end ++
+            if s.caller do
+              [{:send, s.caller, {:tui_exit, {:edit_note, note_path}}}]
+            else
+              []
+            end ++ [Command.quit()]
+
+        {s, effects}
+    end
   end
 
   def decide({:open_modal, action}, s) do
@@ -663,7 +707,16 @@ defmodule TodoTxt.Tui do
   defp edit(io, path, ts, t, {:append_text, x}), do: Tasks.append_text(io, path, ts, t, x)
   defp edit(io, path, ts, t, {:prepend_text, x}), do: Tasks.prepend_text(io, path, ts, t, x)
 
-  defp merge(:complete, %{task: t}, r, s), do: %{s | tasks: r.tasks, status: "#{t.line}: done"}
+  defp merge(:complete, %{task: t}, r, s) do
+    status =
+      if r.task.done do
+        "#{t.line}: done"
+      else
+        "#{t.line}: count #{r.task.tags["count"]}"
+      end
+
+    %{s | tasks: r.tasks, status: status}
+  end
 
   defp merge(:uncomplete, %{task: t}, r, s),
     do: %{s | tasks: r.tasks, status: "#{t.line}: reopened"}

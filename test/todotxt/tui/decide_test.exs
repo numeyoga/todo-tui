@@ -50,6 +50,25 @@ defmodule TodoTxt.Tui.DecideTest do
     refute_received {:tui_exit, :edit}
   end
 
+  test "edit_note ensures note exists, emits persist if tag added, and notifies caller before quit" do
+    dir = Path.join(System.tmp_dir!(), "decide_note_test_#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    todo_p = Path.join(dir, "todo.txt")
+    File.write!(todo_p, "")
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    s = state([t("task without note", 1)], paths: %{todo: todo_p, done: "d"})
+
+    assert {^s, effects} = Tui.decide(:edit_note, s)
+
+    assert [{:persist, :edit, _}, :sync, {:send, pid, {:tui_exit, {:edit_note, note_path}}}, quit] =
+             effects
+
+    assert pid == self() and quit == TermUI.Command.quit()
+    assert File.exists?(note_path)
+    refute_received {:tui_exit, _}
+  end
+
   test "toggle_scope flips local boolean, switches paths, and emits reload effect" do
     s = state([t("a", 1)], local: false)
     assert {s2, [:reload, {:status, status}]} = Tui.decide(:toggle_scope, s)

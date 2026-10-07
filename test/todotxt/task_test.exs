@@ -118,4 +118,20 @@ defmodule TodoTxt.TaskTest do
     assert Task.next_recurrence(Parser.parse("x", 1), ~D[2026-09-21]) == nil
     assert Task.next_recurrence(Parser.parse("x recur:banana", 1), ~D[2026-09-21]) == nil
   end
+
+  test "decrement_count decrements when count > 1, signals done on 1, none otherwise" do
+    t3 = Parser.parse("Drink water count:3", 1)
+    assert {:ok, t2, 2} = Task.decrement_count(t3)
+    assert t2.tags["count"] == "2"
+    assert t2.raw =~ "count:2"
+
+    t1 = Parser.parse("Drink water count:1", 1)
+    assert :done = Task.decrement_count(t1)
+
+    t_none = Parser.parse("Drink water", 1)
+    assert :none = Task.decrement_count(t_none)
+
+    t_invalid = Parser.parse("Drink water count:abc", 1)
+    assert :none = Task.decrement_count(t_invalid)
+  end
 end

@@ -55,6 +55,32 @@ defmodule TodoTxt.Task do
   def prepend_text(%__MODULE__{} = t, s), do: set_text(t, String.trim(s <> " " <> t.description))
 
   @doc """
+  If task carries a `count:N` tag with N > 1, decrements it to N-1 and returns
+  `{:ok, updated_task, remaining_count}`.
+  If N == 1, returns `:done` (ready to be completed).
+  If no valid count tag, returns `:none`.
+  """
+  def decrement_count(%__MODULE__{} = t) do
+    case t.tags["count"] do
+      nil ->
+        :none
+
+      val ->
+        case Integer.parse(val) do
+          {n, ""} when n > 1 ->
+            desc = update_tag(t.description, "count", to_string(n - 1))
+            {:ok, reparse(%{t | description: desc}), n - 1}
+
+          {1, ""} ->
+            :done
+
+          _ ->
+            :none
+        end
+    end
+  end
+
+  @doc """
   Build the next occurrence of a recurring task (`recur:` tag).
 
   `recur:+Nu` shifts from the completion date `today`; `recur:Nu`

@@ -9,7 +9,7 @@ defmodule TodoTxt.Tui.Modal do
 
   @help_text "j/k nav · Tab focus · Enter applique · x/space do-undo · a add · " <>
                "e edit · A/P append/prepend · p prio · d del · m move · " <>
-               "R archive · L scope · H hidden · / filter · E $EDITOR · r reload · ^L redessiner · Esc annule · q quit"
+               "R archive · L scope · H hidden · N note · / filter · E $EDITOR · r reload · ^L redessiner · Esc annule · q quit"
 
   @doc "Modal map `%{action:, widget:, widget_mod:}` (+`:line` when task-bound)."
   def open(:add, s), do: text_modal(:add, "", "New task: ", Map.get(s, :width, 80))

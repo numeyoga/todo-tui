@@ -1220,7 +1220,7 @@ defmodule TodoTxt.Tui.View do
         "q:Quitter"
       ]
     else
-      [
+      base_items = [
         "a: Ajouter",
         "e: Modifier",
         x_label,
@@ -1228,14 +1228,21 @@ defmodule TodoTxt.Tui.View do
         "p: Priorité",
         m_label,
         "L: Scope",
-        h_label,
-        "Tab/h: Menu",
-        "/: Filtrer",
-        "E: Éditeur",
-        "^L: Nettoyer",
-        "?: Aide",
-        "q: Quitter"
+        h_label
       ]
+
+      extra = if is_integer(s.width) and s.width >= 180, do: ["N: Note"], else: []
+
+      base_items ++
+        extra ++
+        [
+          "Tab/h: Menu",
+          "/: Filtrer",
+          "E: Éditeur",
+          "^L: Nettoyer",
+          "?: Aide",
+          "q: Quitter"
+        ]
     end
   end
 

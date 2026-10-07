@@ -49,6 +49,9 @@ defmodule TodoTxt.Editor do
     end
   end
 
+  @doc "Convenience alias for `open/1`."
+  def edit(path), do: open(path)
+
   # :nouse_stdio — the child keeps the VM's fds 0/1/2 (the tty); the
   # port protocol rides on fds 3/4 and only :exit_status matters to us.
   defp spawn_port(exe, args),

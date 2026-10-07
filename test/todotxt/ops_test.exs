@@ -39,6 +39,21 @@ defmodule TodoTxt.OpsTest do
     assert recur.done == false
   end
 
+  test "complete decrements count > 1 and keeps task open without spawning recurrence" do
+    tasks = [t("drink water count:3 rec:1d", 1)]
+    assert {:ok, [updated], nil} = Ops.complete(tasks, hd(tasks), @today)
+    assert updated.tags["count"] == "2"
+    assert updated.done == false
+  end
+
+  test "complete finishes normally when count is 1 and spawns recurrence if rec present" do
+    tasks = [t("drink water count:1 rec:1d", 1)]
+    assert {:ok, [done], recur} = Ops.complete(tasks, hd(tasks), @today)
+    assert done.done == true
+    assert recur != nil
+    assert recur.done == false
+  end
+
   test "complete with malformed recur errors before mutating" do
     tasks = [t("x recur:banana", 1)]
     assert {:error, msg} = Ops.complete(tasks, hd(tasks), @today)
