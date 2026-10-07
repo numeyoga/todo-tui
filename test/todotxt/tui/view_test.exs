@@ -147,13 +147,64 @@ defmodule TodoTxt.Tui.ViewTest do
   test "detail pane word-wraps long task descriptions across multiple lines" do
     long_desc = "Faire une capture d'ecran tres detaillee de l'application todo pour le TUI"
     s = st([t(long_desc, 1)], list_idx: 0, width: 80)
-    all_text = texts(View.render(s))
-    detail_lines = Enum.filter(all_text, &String.starts_with?(&1, "│ "))
+    tree = View.render(s)
+    %RenderNode{children: [{_header, _}, {body, _}, {_status, _}]} = tree
+    %RenderNode{children: [{_sb, _}, {_list, _}, {detail_node, _}]} = body
+    %RenderNode{children: [{sep_node, _}, {content_node, _}]} = detail_node
+
+    # Separator is an independent column of dim vertical bars, unaffected by content styles
+    assert length(sep_node.children) >= 15
+
+    assert Enum.all?(sep_node.children, fn %RenderNode{content: c, style: st} ->
+             c == "│" and :bold not in (st.attrs || [])
+           end)
 
     # At width 80 (detail pane width ~24, content ~20), this 74-char text must be wrapped into 3+ lines
-    assert length(detail_lines) >= 3
-    # Every wrapped line is constrained in width
-    assert Enum.all?(detail_lines, &(String.length(&1) <= 30))
+    all_text = texts(content_node)
+    assert Enum.any?(all_text, &String.contains?(&1, "capture"))
+    assert Enum.any?(all_text, &String.contains?(&1, "detaillee"))
+    assert length(content_node.children) >= 4
+  end
+
+  test "priority modal renders colored items A-F with matching styles and cyan border" do
+    s = st([t("(D) task", 1)], width: 80, height: 24, mode: :input)
+    s = %{s | modal: Modal.open(:pri, s)}
+    tree = View.render(s)
+    all_text = texts(tree)
+
+    # Rounded border and title
+    assert Enum.any?(all_text, &String.contains?(&1, "╭─ Priorité"))
+    assert Enum.any?(all_text, &String.contains?(&1, "╰"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Item 4 of 27"))
+
+    nodes = text_nodes(tree)
+    a_node = Enum.find(nodes, &(&1.content == "A"))
+    b_node = Enum.find(nodes, &(&1.content == "B"))
+    c_node = Enum.find(nodes, &(&1.content == "C"))
+    # D is pre-selected because task has priority (D)
+    d_node = Enum.find(nodes, &String.contains?(&1.content, "D"))
+
+    assert a_node.style.fg == :red
+    assert :bold in a_node.style.attrs
+    assert b_node.style.fg == :yellow
+    assert :bold in b_node.style.attrs
+    assert c_node.style.fg == :cyan
+    assert :bold in c_node.style.attrs
+    assert d_node.style.fg == :green
+    assert :reverse in d_node.style.attrs
+  end
+
+  test "detail pane renders colored priority and fields" do
+    s = st([t("(A) a +proj @ctx due:2026-10-10", 1)], list_idx: 0, width: 100)
+    nodes = text_nodes(View.render(s))
+
+    # Priority A colored in detail pane
+    a_nodes = Enum.filter(nodes, &(&1.content == "(A)" or &1.content == "A"))
+    assert Enum.any?(a_nodes, &(&1.style.fg == :red and :bold in &1.style.attrs))
+
+    # Projects colored in detail pane
+    proj_nodes = Enum.filter(nodes, &(&1.content == "+proj"))
+    assert Enum.any?(proj_nodes, &(&1.style.fg == :cyan and :bold in &1.style.attrs))
   end
 
   test "statusline renders scope badge [LOCAL] or [GLOBAL]" do

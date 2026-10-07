@@ -16,10 +16,10 @@ defmodule TodoTxt.Tui.View do
   @pri %{
     ?A => Style.new(fg: :red, attrs: [:bold]),
     ?B => Style.new(fg: :yellow, attrs: [:bold]),
-    ?C => Style.new(fg: :cyan),
-    ?D => Style.new(fg: :green),
-    ?E => Style.new(fg: :blue),
-    ?F => Style.new(fg: :magenta)
+    ?C => Style.new(fg: :cyan, attrs: [:bold]),
+    ?D => Style.new(fg: :green, attrs: [:bold]),
+    ?E => Style.new(fg: :blue, attrs: [:bold]),
+    ?F => Style.new(fg: :magenta, attrs: [:bold])
   }
   # Palette monochrome (state.plain) : attributs seuls, jamais de fg/bg.
   @dim_plain Style.new(attrs: [:dim])
@@ -27,6 +27,7 @@ defmodule TodoTxt.Tui.View do
   defp dim(%{plain: true}), do: @dim_plain
   defp dim(_), do: @dim
 
+  defp pri(%{plain: true}, _p), do: Style.new(attrs: [:bold])
   defp pri(_s, p), do: Map.get(@pri, p, Style.new(fg: :bright_black, attrs: [:bold]))
 
   defp accent(%{plain: true}), do: nil
@@ -101,10 +102,16 @@ defmodule TodoTxt.Tui.View do
   # %{type: :overlay} plain map and PickList.render/2 a %RenderNode{cells:}
   # with absolute screen coordinates — both are valid stack children for
   # TermUI.Runtime.NodeRenderer (constrained child rendered into the body
-  # rect, which spans the full width at the top of the screen).
-  defp body(%{mode: :input, modal: %{widget_mod: mod, widget: w}} = s)
-       when mod in [AlertDialog, PickList] do
-    mod.render(w, %{width: s.width, height: s.height})
+  defp body(%{mode: :input, modal: %{widget_mod: AlertDialog, widget: w}} = s) do
+    AlertDialog.render(w, %{width: s.width, height: s.height})
+  end
+
+  defp body(%{mode: :input, modal: %{action: :pri} = m} = s) do
+    render_priority_modal(s, m)
+  end
+
+  defp body(%{mode: :input, modal: %{widget_mod: PickList, widget: w}} = s) do
+    PickList.render(w, %{width: s.width, height: s.height})
   end
 
   defp body(%{mode: :input, modal: %{widget_mod: TextInput, action: :filter} = m} = s) do
@@ -228,7 +235,7 @@ defmodule TodoTxt.Tui.View do
 
   defp render_rows(s, rows, ti) do
     detail_w = max(round(s.width * 0.30), 24)
-    list_width = max(s.width - 21 - detail_w - 2, 20)
+    list_width = max(s.width - 21 - detail_w, 20)
 
     {nodes, _ti} =
       Enum.map_reduce(rows, ti, fn
@@ -281,42 +288,61 @@ defmodule TodoTxt.Tui.View do
 
   defp detail(s) do
     detail_w = max(round(s.width * 0.30), 24)
-    content_w = max(detail_w - 4, 16)
+    content_w = max(detail_w - 3, 16)
     avail_h = max(s.height - 5, 4)
 
+    sep_column =
+      stack(:vertical, for(_ <- 1..avail_h, do: text("│", dim(s))))
+
+    content_column = detail_content(s, content_w, avail_h)
+
+    stack(:horizontal, [
+      {sep_column, Constraint.length(1)},
+      {content_column, Constraint.fill()}
+    ])
+  end
+
+  defp detail_content(s, content_w, avail_h) do
     nodes =
       case State.selected_task(s) do
         nil ->
-          [text("│ —", dim(s))]
+          [text("  —", dim(s))]
 
         t ->
           raw_lines = wrap_text(t.raw, content_w)
-          header_nodes = Enum.map(raw_lines, &text("│ " <> &1, Style.new(attrs: [:bold])))
+
+          header_nodes =
+            Enum.map(raw_lines, fn line ->
+              words = String.split(line, " ", trim: false)
+              colored = build_syntax_nodes(words, s, Style.new(attrs: [:bold]))
+              stack(:horizontal, [text(" ", nil) | colored])
+            end)
 
           fields = [
-            {"Ligne", "#{t.line}"},
-            {"Priorité", t.priority && <<t.priority>>},
-            {"Créée", t.creation_date && Date.to_string(t.creation_date)},
-            {"Faite", t.completion_date && Date.to_string(t.completion_date)},
-            {"Due", t.tags["due"]},
-            {"Seuil t:", t.tags["t"]},
-            {"Recur", t.tags["recur"]},
-            {"Projets", Enum.join(t.projects, " ")},
-            {"Contextes", Enum.join(t.contexts, " ")}
+            {"Ligne", "#{t.line}", nil},
+            {"Priorité", t.priority && <<t.priority>>, t.priority && pri(s, t.priority)},
+            {"Créée", t.creation_date && Date.to_string(t.creation_date),
+             Style.new(fg: :bright_black)},
+            {"Faite", t.completion_date && Date.to_string(t.completion_date),
+             Style.new(fg: :bright_black)},
+            {"Due", t.tags["due"], Style.new(fg: :yellow, attrs: [:bold])},
+            {"Seuil t:", t.tags["t"], Style.new(fg: :blue, attrs: [:bold])},
+            {"Recur", t.tags["recur"], Style.new(fg: :yellow)},
+            {"Projets", Enum.join(t.projects, " "), Style.new(fg: :cyan, attrs: [:bold])},
+            {"Contextes", Enum.join(t.contexts, " "), Style.new(fg: :magenta, attrs: [:bold])}
           ]
 
-          field_nodes = Enum.flat_map(fields, fn {k, v} -> render_field(k, v, content_w) end)
+          field_nodes =
+            Enum.flat_map(fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)
 
-          header_nodes ++ [text("│", dim(s)) | field_nodes]
+          header_nodes ++ [text("", nil) | field_nodes]
       end
 
     padding_count = max(0, avail_h - length(nodes))
 
     padding_nodes =
       if padding_count > 0 do
-        for _ <- 1..padding_count do
-          text("│", dim(s))
-        end
+        for _ <- 1..padding_count, do: text("", nil)
       else
         []
       end
@@ -324,12 +350,37 @@ defmodule TodoTxt.Tui.View do
     stack(:vertical, nodes ++ padding_nodes)
   end
 
-  defp render_field(_k, v, _content_w) when v in [nil, ""], do: []
+  defp render_field(_k, v, _st, _content_w, _s) when v in [nil, ""], do: []
 
-  defp render_field(k, v, content_w) do
-    case wrap_text("#{k}: #{v}", content_w) do
-      [] -> []
-      [first | rest] -> [text("│   " <> first) | Enum.map(rest, &text("│     " <> &1))]
+  defp render_field(k, v, st, content_w, s) do
+    val_style =
+      cond do
+        s.plain and st != nil and :bold in st.attrs -> Style.new(attrs: [:bold])
+        s.plain -> nil
+        true -> st
+      end
+
+    label_style = dim(s)
+    label_text = "   #{k}: "
+    avail_val_w = max(content_w - String.length(label_text), 10)
+
+    case wrap_text(v, avail_val_w) do
+      [] ->
+        []
+
+      [first | rest] ->
+        first_node =
+          stack(:horizontal, [text(label_text, label_style), text(first, val_style)])
+
+        rest_nodes =
+          Enum.map(rest, fn r ->
+            stack(:horizontal, [
+              text(String.duplicate(" ", String.length(label_text)), nil),
+              text(r, val_style)
+            ])
+          end)
+
+        [first_node | rest_nodes]
     end
   end
 
@@ -362,6 +413,153 @@ defmodule TodoTxt.Tui.View do
     else
       do_wrap([word | rest], max_width, "", [current_line | acc])
     end
+  end
+
+  defp render_priority_modal(s, modal) do
+    modal_w = 26
+    inner_w = modal_w - 6
+    title = "Priorité"
+    border_style = accent(s)
+
+    top_border =
+      "╭─ #{title} " <> String.duplicate("─", max(0, modal_w - String.length(title) - 5)) <> "╮"
+
+    bot_border = "╰" <> String.duplicate("─", modal_w - 2) <> "╯"
+
+    widget = modal.widget
+    items = Map.get(widget, :filtered_items, Map.get(widget, :original_items, []))
+    selected_idx = Map.get(widget, :selected_index, 0)
+    scroll_offset = Map.get(widget, :scroll_offset, 0)
+    filter_text = Map.get(widget, :filter_text, "")
+    visible_count = 9
+    visible_items = items |> Enum.drop(scroll_offset) |> Enum.take(visible_count)
+
+    filter_rows = render_priority_filter_rows(filter_text, inner_w, border_style, modal_w)
+
+    item_rows =
+      visible_items
+      |> Enum.with_index()
+      |> Enum.map(fn {item, idx} ->
+        render_priority_item_row(
+          item,
+          scroll_offset + idx,
+          selected_idx,
+          inner_w,
+          border_style,
+          s
+        )
+      end)
+
+    pad_rows =
+      render_modal_padding_rows(visible_count - length(visible_items), modal_w, border_style)
+
+    status_row = render_priority_status_row(items, selected_idx, inner_w, border_style, s)
+    empty_row = modal_empty_row(modal_w, border_style)
+
+    modal_rows =
+      [text(top_border, border_style), empty_row] ++
+        filter_rows ++
+        item_rows ++
+        pad_rows ++
+        [empty_row, status_row, empty_row, text(bot_border, border_style)]
+
+    box_h = length(modal_rows)
+    top_pad = max(div(max(s.height - 5, 4) - box_h, 2), 0)
+    left_pad = max(div(s.width - modal_w, 2), 1)
+
+    padded_box =
+      Enum.map(modal_rows, fn row ->
+        stack(:horizontal, [
+          text(String.duplicate(" ", left_pad), nil),
+          row
+        ])
+      end)
+
+    stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
+  end
+
+  defp modal_empty_row(modal_w, border_style) do
+    stack(:horizontal, [
+      text("│", border_style),
+      text(String.duplicate(" ", modal_w - 2), nil),
+      text("│", border_style)
+    ])
+  end
+
+  defp render_priority_filter_rows("", _inner_w, _border_style, _modal_w), do: []
+
+  defp render_priority_filter_rows(filter_text, inner_w, border_style, modal_w) do
+    filter_str = "Filtre: " <> filter_text
+    truncated = String.slice(filter_str, 0, inner_w)
+    pad_len = max(0, inner_w - String.length(truncated))
+
+    [
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(truncated, Style.new(fg: :yellow)),
+        text(String.duplicate(" ", pad_len), nil),
+        text("  │", border_style)
+      ]),
+      modal_empty_row(modal_w, border_style)
+    ]
+  end
+
+  defp render_priority_item_row(item, actual_idx, selected_idx, inner_w, border_style, s) do
+    is_selected = actual_idx == selected_idx
+    p_byte = if item == "(aucune)", do: nil, else: :binary.first(item)
+    base_style = if p_byte, do: pri(s, p_byte), else: dim(s)
+
+    if is_selected do
+      padded = String.pad_trailing(item, inner_w)
+      sel_style = selected_priority_style(base_style, s)
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(padded, sel_style),
+        text("  │", border_style)
+      ])
+    else
+      pad_len = max(0, inner_w - String.length(item))
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(item, base_style),
+        text(String.duplicate(" ", pad_len), nil),
+        text("  │", border_style)
+      ])
+    end
+  end
+
+  defp selected_priority_style(_base_style, %{plain: true}), do: @sel_plain
+
+  defp selected_priority_style(base_style, _s) do
+    Style.new(
+      fg: base_style.fg || :default,
+      bg: :black,
+      attrs: MapSet.union(base_style.attrs, MapSet.new([:reverse]))
+    )
+  end
+
+  defp render_modal_padding_rows(needed_pad, modal_w, border_style) when needed_pad > 0 do
+    for _ <- 1..needed_pad, do: modal_empty_row(modal_w, border_style)
+  end
+
+  defp render_modal_padding_rows(_needed_pad, _modal_w, _border_style), do: []
+
+  defp render_priority_status_row(items, selected_idx, inner_w, border_style, s) do
+    total_items = length(items)
+    current_pos = if total_items > 0, do: selected_idx + 1, else: 0
+    status_str = "Item #{current_pos} of #{total_items}"
+    status_pad_l = max(0, div(inner_w - String.length(status_str), 2))
+    status_pad_r = max(0, inner_w - String.length(status_str) - status_pad_l)
+
+    stack(:horizontal, [
+      text("│  ", border_style),
+      text(String.duplicate(" ", status_pad_l), nil),
+      text(status_str, dim(s)),
+      text(String.duplicate(" ", status_pad_r), nil),
+      text("  │", border_style)
+    ])
   end
 
   defp render_filter_modal(s, modal) do
@@ -655,10 +853,11 @@ defmodule TodoTxt.Tui.View do
   defp action_title(:prepend, m), do: "AJOUTER AU DÉBUT ##{m[:line]}"
   defp action_title(a, _m), do: a |> Atom.to_string() |> String.upcase()
 
-  defp build_syntax_nodes(words, s) do
+  defp build_syntax_nodes(words, s, default_style \\ nil) do
     Enum.flat_map(Enum.with_index(words), fn {w, i} ->
       prefix = if i > 0, do: [text(" ", nil)], else: []
-      prefix ++ [text(w, word_style(w, s))]
+      style = word_style(w, s) || default_style
+      prefix ++ [text(w, style)]
     end)
   end
 
@@ -768,12 +967,8 @@ defmodule TodoTxt.Tui.View do
     selected = State.selected_task(s)
     is_done = s.view == :done or (selected != nil and selected.done)
 
-    {x_label, m_label} =
-      if is_done do
-        {"x:Recommencer", "m:Recommencer"}
-      else
-        {"x:Terminer", "m:Terminer"}
-      end
+    x_label = if is_done, do: "x:Reprendre", else: "x:Terminer"
+    m_label = "m:Déplacer"
 
     if is_integer(s.width) and s.width < 100 do
       " a:Ajouter  e:Modifier  #{x_label}  d:Supprimer  p:Priorité  #{m_label}  Tab/h:Menu  /:Filtrer  ?:Aide  q:Quitter"

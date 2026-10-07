@@ -2,6 +2,7 @@ defmodule TodoTxt.Tui.Modal do
   @moduledoc "Builds modal widget state per action."
 
   alias TermUI.Event
+  alias TermUI.Renderer.Style
   alias TermUI.Widget.PickList
   alias TermUI.Widgets.{AlertDialog, TextInput}
   alias TodoTxt.Tui.State
@@ -29,26 +30,43 @@ defmodule TodoTxt.Tui.Modal do
 
   def open(:pri, s) do
     items = Enum.map(?A..?Z, &<<&1>>) ++ ["(aucune)"]
-    {:ok, w} = PickList.init(%{items: items, title: "Priorité", width: 20, height: 12})
+    selected_task = State.selected_task(s)
+
+    init_idx =
+      if selected_task && selected_task.priority do
+        pri_char = <<selected_task.priority>>
+        Enum.find_index(items, &(&1 == pri_char)) || 0
+      else
+        0
+      end
+
+    scroll = if init_idx >= 9, do: init_idx - 8, else: 0
+
+    {:ok, w} = PickList.init(%{items: items, title: "Priorité", width: 28, height: 12})
+    w = %{w | selected_index: init_idx, scroll_offset: scroll}
     %{action: :pri, widget: w, widget_mod: PickList, line: selected_line(s)}
   end
 
   def open(:del, s) do
-    confirm(:del, "Supprimer", "Supprimer la tâche #{selected_line(s)} ?")
+    confirm(:del, "Supprimer", "Supprimer la tâche #{selected_line(s)} ?", s)
     |> Map.put(:line, selected_line(s))
   end
 
   def open(:archive, s) do
     done = s |> State.counts() |> Map.get(:done)
-    confirm(:archive, "Archiver", "Archiver #{done} tâche(s) faite(s) ?")
+    confirm(:archive, "Archiver", "Archiver #{done} tâche(s) faite(s) ?", s)
   end
 
-  def open(:help, _s) do
+  def open(:help, s) do
+    border_style =
+      if Map.get(s, :plain, false), do: Style.new(attrs: [:dim]), else: Style.new(fg: :cyan)
+
     props =
       AlertDialog.new(
         type: :info,
         title: "Aide",
         message: @help_text,
+        border_style: border_style,
         on_result: fn r -> send(self(), {:dialog_result, r}) end
       )
 
@@ -96,12 +114,16 @@ defmodule TodoTxt.Tui.Modal do
 
   defp with_line(modal, s), do: Map.put(modal, :line, selected_line(s))
 
-  defp confirm(action, title, message) do
+  defp confirm(action, title, message, s) do
+    border_style =
+      if Map.get(s, :plain, false), do: Style.new(attrs: [:dim]), else: Style.new(fg: :cyan)
+
     props =
       AlertDialog.new(
         type: :confirm,
         title: title,
         message: message,
+        border_style: border_style,
         on_result: fn r -> send(self(), {:dialog_result, r}) end
       )
 
