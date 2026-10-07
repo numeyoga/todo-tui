@@ -79,4 +79,14 @@ defmodule TodoTxt.Tui.StateTest do
     s = st([t("a", 1), t("b", 2)], [], list_idx: 1)
     assert State.selected_task(s).line == 2
   end
+
+  test "select_task_by_line moves list_idx to line's new row or clamps" do
+    # When line 2 is prioritized with (A), it moves to index 0
+    s = st([t("(A) moved", 2), t("first", 1)], [], list_idx: 1)
+    assert State.select_task_by_line(s, 2).list_idx == 0
+    assert State.select_task_by_line(s, 1).list_idx == 1
+    # Unknown line clamps within bounds
+    assert State.select_task_by_line(s, 999).list_idx == 1
+    assert State.select_task_by_line(s, nil).list_idx == 1
+  end
 end

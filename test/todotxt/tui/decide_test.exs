@@ -39,7 +39,7 @@ defmodule TodoTxt.Tui.DecideTest do
 
     s = state([t("a", 1)], modal: %{action: :del, line: 1}, mode: :input)
 
-    assert {_, [{:persist, :edit, %{op: :delete, list: :todo}}, :sync]} =
+    assert {_, [{:persist, :edit, %{op: :delete, list: :todo}}, {:sync, 1}]} =
              Tui.decide({:dialog_result, :yes}, s)
   end
 

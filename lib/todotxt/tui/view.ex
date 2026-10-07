@@ -49,25 +49,32 @@ defmodule TodoTxt.Tui.View do
   end
 
   defp body_height(s) do
-    max(Map.get(s, :height, 24) - 2 - statusline_height(s), 4)
+    max(Map.get(s, :height, 24) - 2 - statusline_height(s), 1)
   end
 
   defp header(s) do
-    width = max(s.width, 40)
+    width = max(s.width, 1)
     title = " 📝 TodoTxt "
     scope = if s.local, do: "[LOCAL]", else: "[GLOBAL]"
     counts = State.counts(s)
-    stats = "#{counts.open} ouvertes / #{counts.open + counts.done} total "
-    date_str = Date.to_iso8601(s.today)
+    stats_text = "#{counts.open} ouvertes / #{counts.open + counts.done} total "
+    date_str = "📅 " <> Date.to_iso8601(s.today)
+
+    {center_part, stats} =
+      cond do
+        width >= 75 -> {date_str, stats_text}
+        width >= 50 -> {"", stats_text}
+        true -> {"", ""}
+      end
 
     left_part = title <> scope
     left_len = String.length(left_part)
     right_len = String.length(stats)
-    center_part = "📅 " <> date_str
     center_len = String.length(center_part)
 
-    pad1_len = max(1, div(width - left_len - right_len - center_len, 2))
-    pad2_len = max(1, width - left_len - right_len - center_len - pad1_len)
+    rem_pad = max(0, width - left_len - right_len - center_len)
+    pad1_len = div(rem_pad, 2)
+    pad2_len = rem_pad - pad1_len
 
     line1 =
       stack(:horizontal, [
@@ -85,16 +92,16 @@ defmodule TodoTxt.Tui.View do
   end
 
   defp build_top_separator(s) do
-    width = max(s.width, 40)
-    detail_w = max(round(s.width * 0.30), 24)
+    width = max(s.width, 1)
+    detail_w = max(round(width * 0.30), 24)
     sb_col = 20
     detail_col = max(width - detail_w, sb_col + 1)
 
     chars =
       for col <- 0..(width - 1) do
         cond do
-          col == sb_col -> "┬"
-          col == detail_col -> "┬"
+          col == sb_col and col < width - 1 -> "┬"
+          col == detail_col and col < width - 1 -> "┬"
           true -> "─"
         end
       end
@@ -1077,16 +1084,16 @@ defmodule TodoTxt.Tui.View do
   end
 
   defp build_separator(s) do
-    width = max(s.width, 40)
-    detail_w = max(round(s.width * 0.30), 24)
+    width = max(s.width, 1)
+    detail_w = max(round(width * 0.30), 24)
     sb_col = 20
     detail_col = max(width - detail_w, sb_col + 1)
 
     chars =
       for col <- 0..(width - 1) do
         cond do
-          col == sb_col -> "┴"
-          col == detail_col -> "┴"
+          col == sb_col and col < width - 1 -> "┴"
+          col == detail_col and col < width - 1 -> "┴"
           true -> "─"
         end
       end

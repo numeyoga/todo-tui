@@ -162,6 +162,18 @@ defmodule TodoTxt.Tui.State do
   @doc "Clamp list_idx after the task set changed (reload/mutation)."
   def clamp_selection(s), do: move_cursor(%{s | list_idx: s.list_idx}, 0)
 
+  @doc "Selects the task by line number in the current visible task rows, or clamps selection."
+  def select_task_by_line(s, target_line) when is_integer(target_line) do
+    rows = task_rows(s)
+
+    case Enum.find_index(rows, fn {:task, t} -> t.line == target_line end) do
+      nil -> clamp_selection(s)
+      idx -> %{s | list_idx: idx}
+    end
+  end
+
+  def select_task_by_line(s, _), do: clamp_selection(s)
+
   def activate_sidebar(s) do
     case Enum.at(sidebar_entries(s), s.sidebar_idx) do
       {:all, _} ->

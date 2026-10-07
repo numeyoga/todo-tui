@@ -52,11 +52,34 @@ defmodule TodoTxt.TuiTest do
     assert TermUI.Command.quit() in cmds or :quit in cmds
   end
 
-  test "Ctrl+L emits redraw message and redraws screen" do
+  test "Ctrl+L emits redraw message and clears screen and buffers" do
+    alias TermUI.Renderer.{Buffer, BufferManager}
+
+    dummy_name = :test_redraw_buf
+    {:ok, dummy_buf} = Buffer.new(10, 10)
+    Buffer.write_string(dummy_buf, 1, 1, "test")
+    dirty_atomic = :atomics.new(1, [])
+    :persistent_term.put({BufferManager, dummy_name, :previous}, dummy_buf)
+    :persistent_term.put({BufferManager, dummy_name, :dirty}, dirty_atomic)
+
     s = state([])
     assert {:msg, :redraw} = Tui.event_to_msg(%Event.Key{key: "l", modifiers: [:ctrl]}, s)
     {s2, []} = Tui.update(:redraw, s)
     assert s2.status == "redessiné"
+
+    assert Buffer.get_cell(dummy_buf, 1, 1).char == " "
+    assert :atomics.get(dirty_atomic, 1) == 1
+
+    Buffer.destroy(dummy_buf)
+    :persistent_term.erase({BufferManager, dummy_name, :previous})
+    :persistent_term.erase({BufferManager, dummy_name, :dirty})
+  end
+
+  test "window resize triggers silent redraw to prevent artifacts" do
+    s = state([], width: 80, height: 24)
+    {s2, []} = Tui.update({:resize, 100, 30}, s)
+    assert s2.width == 100 and s2.height == 30
+    assert s2.status == nil
   end
 
   test "keys are ignored in :input mode except modal routing" do
@@ -247,6 +270,31 @@ defmodule TodoTxt.TuiTest do
     assert s2.modal.action == :pri
     {s3, []} = Tui.update({:select, "B"}, s2)
     assert hd(s3.tasks).priority == ?B
+  end
+
+  test "setting priority moves task visually and cursor follows the moved task" do
+    tasks = for i <- 1..10, do: t("task #{i}", i)
+    s = state(tasks, list_idx: 9)
+    assert State.selected_task(s).line == 10
+
+    # User adds priority A to task line 10
+    {s2, []} = Tui.update({:open_modal, :pri}, s)
+    assert s2.modal.action == :pri
+    {s3, []} = Tui.update({:select, "A"}, s2)
+
+    # Line 10 now has priority A and moved to index 0; cursor follows it
+    assert s3.list_idx == 0
+    assert State.selected_task(s3).line == 10
+    assert State.selected_task(s3).priority == ?A
+
+    # Now remove priority from line 10
+    {s4, []} = Tui.update({:open_modal, :pri}, s3)
+    {s5, []} = Tui.update({:select, "(aucune)"}, s4)
+
+    # Line 10 moved back down to index 9; cursor follows it
+    assert s5.list_idx == 9
+    assert State.selected_task(s5).line == 10
+    assert State.selected_task(s5).priority == nil
   end
 
   test "dialog_result :yes deletes; :no closes" do

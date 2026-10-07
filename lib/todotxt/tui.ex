@@ -3,6 +3,7 @@ defmodule TodoTxt.Tui do
   use TermUI.Elm
 
   alias TermUI.{Command, Event}
+  alias TermUI.Renderer.{Buffer, BufferManager}
   alias TermUI.Widgets.TextInput
   alias TodoTxt.{Editor, Format, Tasks}
   alias TodoTxt.Tui.{Keys, Modal, State, View}
@@ -120,10 +121,12 @@ defmodule TodoTxt.Tui do
   @type io_effect ::
           {:persist, atom(), map()}
           | :sync
+          | {:sync, non_neg_integer() | nil}
           | :reload
           | :watch
           | :check_resize
           | :redraw
+          | :redraw_silent
           | {:status, String.t()}
           | {:send, pid(), term()}
 
@@ -134,7 +137,14 @@ defmodule TodoTxt.Tui do
   end
 
   @doc "Pure transition: `{state, [io_effect | TermUI.Command.t()]}`, no I/O."
-  def decide({:resize, w, h}, s), do: {%{s | width: w, height: h}, []}
+  def decide({:resize, w, h}, s) do
+    if s.width != w or s.height != h do
+      {%{s | width: w, height: h}, [:redraw_silent]}
+    else
+      {s, []}
+    end
+  end
+
   def decide({:nav, d}, s), do: {State.move_cursor(s, d), []}
 
   def decide(:focus_next, s),
@@ -361,7 +371,7 @@ defmodule TodoTxt.Tui do
         {%{s | status: "error: task #{line} no longer exists"}, []}
 
       fresh ->
-        {s, [{:persist, :edit, %{list: list, task: fresh, op: op, label: label}}, :sync]}
+        {s, [{:persist, :edit, %{list: list, task: fresh, op: op, label: label}}, {:sync, line}]}
     end
   end
 
@@ -396,6 +406,9 @@ defmodule TodoTxt.Tui do
     with {:ok, r} <- persist(op, args, s), do: {:ok, merge(op, args, r, s)}
   end
 
+  defp run_effect({:sync, line}, s),
+    do: {:ok, s |> State.refresh_mtimes() |> State.select_task_by_line(line)}
+
   defp run_effect(:sync, s), do: {:ok, s |> State.refresh_mtimes() |> State.clamp_selection()}
 
   defp run_effect(:reload, s) do
@@ -417,13 +430,14 @@ defmodule TodoTxt.Tui do
   end
 
   defp run_effect(:redraw, s) do
-    if pid = Process.whereis(TermUI.Terminal) do
-      send(pid, :sigwinch)
-    end
-
-    IO.write("\e[2J\e[H")
+    clear_screen_and_buffers()
     {cols, rows} = detect_dimensions(s)
     {:ok, %{s | width: cols, height: rows, status: "redessiné"}}
+  end
+
+  defp run_effect(:redraw_silent, s) do
+    clear_screen_and_buffers()
+    {:ok, s}
   end
 
   defp run_effect({:status, msg}, s), do: {:ok, %{s | status: msg}}
@@ -433,14 +447,29 @@ defmodule TodoTxt.Tui do
     {:ok, s}
   end
 
+  defp clear_screen_and_buffers do
+    if pid = Process.whereis(TermUI.Terminal) do
+      send(pid, :sigwinch)
+    end
+
+    IO.write("\e[2J\e[H")
+
+    terms = :persistent_term.get()
+
+    for {{BufferManager, _name, :previous}, buffer} <- terms do
+      Buffer.clear(buffer)
+    end
+
+    for {{BufferManager, _name, :dirty}, dirty_ref} <- terms do
+      :atomics.put(dirty_ref, 1, 1)
+    end
+  end
+
   defp check_terminal_resize(s) do
     {cols, rows} = detect_dimensions(s)
 
     if cols != s.width or rows != s.height do
-      if pid = Process.whereis(TermUI.Terminal) do
-        send(pid, :sigwinch)
-      end
-
+      clear_screen_and_buffers()
       %{s | width: cols, height: rows}
     else
       s

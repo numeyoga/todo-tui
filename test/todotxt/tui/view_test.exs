@@ -313,4 +313,18 @@ defmodule TodoTxt.Tui.ViewTest do
     # Wide screen fits shortcuts onto 1 line (separator + info + 1 shortcut line = 3 lines)
     assert length(status_wide.children) == 3
   end
+
+  test "narrow widths adapt header and separators without overflowing" do
+    for w <- [30, 45, 60] do
+      s = st([t("task", 1)], width: w, height: 15)
+      tree = View.render(s)
+      assert %RenderNode{type: :stack, direction: :vertical} = tree
+
+      all_t = texts(tree)
+      # No string should be longer than the terminal width for top and bottom separators
+      assert Enum.any?(all_t, fn text ->
+               String.starts_with?(text, "─") and String.length(text) == w
+             end)
+    end
+  end
 end
