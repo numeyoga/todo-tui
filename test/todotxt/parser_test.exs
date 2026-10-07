@@ -44,4 +44,13 @@ defmodule TodoTxt.ParserTest do
     t = Parser.parse_all("first\r\n\r\nsecond")
     assert Enum.map(t, & &1.line) == [1, 3]
   end
+
+  test "manually reopened task with two dates drops old completion date and preserves creation date" do
+    t = Parser.parse("2026-10-06 2026-10-05 task previously completed", 1)
+    refute t.done
+    assert t.completion_date == nil
+    assert t.creation_date == ~D[2026-10-05]
+    assert t.description == "task previously completed"
+    assert Parser.render(t) == "2026-10-05 task previously completed"
+  end
 end

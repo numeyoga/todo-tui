@@ -15,7 +15,7 @@ defmodule TodoTxt.Commands.Agenda do
     if opts.json do
       dates =
         Map.new(groups, fn {d, ts} ->
-          {Date.to_string(d), Enum.map(Query.sort(ts), &Format.task_map/1)}
+          {to_string(d), Enum.map(Query.sort(ts), &Format.task_map/1)}
         end)
 
       {:ok,

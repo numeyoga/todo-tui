@@ -35,11 +35,25 @@ defmodule TodoTxt.Tui.Keys do
   }
 
   @doc "Translate a key event to a message for `mode`. :ignore when unbound."
+  def msg(%Event.Key{key: key, modifiers: mods}, :normal)
+      when key in [?\f, "\f"] or key in ["l", "L", :l] do
+    if is_list(mods) and :ctrl in mods do
+      :redraw
+    else
+      if is_binary(key) and mods == [], do: Map.get(@normal_chars, key, :ignore), else: :ignore
+    end
+  end
+
   def msg(%Event.Key{key: key}, :normal) when is_atom(key),
     do: Map.get(@normal, key, :ignore)
 
   def msg(%Event.Key{key: key, modifiers: mods}, :normal) when is_binary(key),
     do: if(mods == [], do: Map.get(@normal_chars, key, :ignore), else: :ignore)
+
+  def msg(%Event.Key{key: key, modifiers: mods} = ev, :input)
+      when key in [?\f, "\f"] or key in ["l", "L", :l] do
+    if is_list(mods) and :ctrl in mods, do: :redraw, else: {:modal_event, ev}
+  end
 
   def msg(%Event.Key{} = ev, :input), do: {:modal_event, ev}
   def msg(_, _), do: :ignore

@@ -52,6 +52,13 @@ defmodule TodoTxt.TuiTest do
     assert TermUI.Command.quit() in cmds or :quit in cmds
   end
 
+  test "Ctrl+L emits redraw message and redraws screen" do
+    s = state([])
+    assert {:msg, :redraw} = Tui.event_to_msg(%Event.Key{key: "l", modifiers: [:ctrl]}, s)
+    {s2, []} = Tui.update(:redraw, s)
+    assert s2.status == "redessiné"
+  end
+
   test "keys are ignored in :input mode except modal routing" do
     s = state([t("a", 1)], mode: :input, modal: %{action: :add, widget: nil})
 

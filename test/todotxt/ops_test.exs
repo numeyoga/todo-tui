@@ -100,4 +100,24 @@ defmodule TodoTxt.OpsTest do
 
     assert Enum.map(thresholds, & &1.line) == [5]
   end
+
+  test "agenda includes word due dates and places ASAP first" do
+    tasks = [
+      t("dated task due:2026-09-25", 1),
+      t("other word task due:urgent", 2),
+      t("asap task due:ASAP", 3),
+      t("x 2026-09-21 done asap task due:ASAP", 4)
+    ]
+
+    {groups, _thresholds} = Ops.agenda(tasks, @today)
+
+    group_keys = Enum.map(groups, fn {key, _ts} -> key end)
+    assert group_keys == ["ASAP", "URGENT", ~D[2026-09-25]]
+
+    assert Enum.map(groups, fn {key, ts} -> {key, Enum.map(ts, & &1.line)} end) == [
+             {"ASAP", [3]},
+             {"URGENT", [2]},
+             {~D[2026-09-25], [1]}
+           ]
+  end
 end

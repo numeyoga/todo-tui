@@ -29,6 +29,7 @@ defmodule TodoTxt.Tui.DecideTest do
     assert {^s, [{:persist, :complete, %{task: ^task}}, :sync]} = Tui.decide(:toggle_done, s)
     assert {^s, [{:persist, :move, %{from: :todo}}, :reload]} = Tui.decide(:move, s)
     assert {^s, [:reload]} = Tui.decide(:reload, s)
+    assert {^s, [:redraw]} = Tui.decide(:redraw, s)
     assert {^s, [:watch]} = Tui.decide(:tick, s)
   end
 

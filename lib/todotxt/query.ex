@@ -46,6 +46,20 @@ defmodule TodoTxt.Query do
     end
   end
 
+  @doc "Returns the task's `due:` key: %Date{} for ISO dates, uppercase string for words (e.g. ASAP), nil when absent."
+  def due_key(t) do
+    case t.tags["due"] do
+      nil ->
+        nil
+
+      raw_val ->
+        case Date.from_iso8601(raw_val) do
+          {:ok, d} -> d
+          _ -> String.upcase(raw_val)
+        end
+    end
+  end
+
   @doc """
   Classifies a task's due date relative to `today`:
   `:overdue`, `:today`, `:week` (within 7 days), `:later`,

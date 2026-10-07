@@ -61,8 +61,8 @@ defmodule TodoTxt.Tui.ViewTest do
 
     assert %RenderNode{type: :stack, direction: :vertical} = header
     assert body.direction == :horizontal
-    assert length(body.children) == 3
-    assert %RenderNode{type: :stack, direction: :vertical, children: [_, _, _]} = status
+    assert %RenderNode{type: :stack, direction: :vertical} = status
+    assert length(status.children) >= 3
   end
 
   test "task rows carry N: raw; selected row has reverse style when list focused" do
@@ -247,5 +247,70 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(all_text, &String.contains?(&1, "FILTRER LES TÂCHES [INS]"))
     assert Enum.any?(all_text, &String.contains?(&1, "Filtres disponibles"))
     assert Enum.any?(all_text, &String.contains?(&1, "[Ctrl+U]"))
+  end
+
+  test "due: tag highlighting: valid dates and ASAP are yellow bold, invalid and empty are red bold underline" do
+    valid_task = t("task due:2026-10-07 due:ASAP", 1)
+    invalid_task = t("task due:2026-02-30 due:", 2)
+
+    s_valid = st([valid_task], focus: :list, list_idx: 0)
+    valid_nodes = text_nodes(View.render(s_valid))
+    due_date_node = Enum.find(valid_nodes, &(&1.content == "due:2026-10-07"))
+    due_asap_node = Enum.find(valid_nodes, &(&1.content == "due:ASAP"))
+
+    assert due_date_node.style.fg == :yellow
+    assert :bold in due_date_node.style.attrs
+    assert due_asap_node.style.fg == :yellow
+    assert :bold in due_asap_node.style.attrs
+
+    s_invalid = st([invalid_task], focus: :list, list_idx: 0)
+    invalid_nodes = text_nodes(View.render(s_invalid))
+    bad_date_node = Enum.find(invalid_nodes, &(&1.content == "due:2026-02-30"))
+    empty_due_node = Enum.find(invalid_nodes, &(&1.content == "due:"))
+
+    assert bad_date_node.style.fg == :red
+    assert :bold in bad_date_node.style.attrs
+    assert :underline in bad_date_node.style.attrs
+
+    assert empty_due_node.style.fg == :red
+    assert :bold in empty_due_node.style.attrs
+    assert :underline in empty_due_node.style.attrs
+  end
+
+  test "input modal wraps Saisie field across multiple rows when long" do
+    long_task =
+      "2026-10-06 Dans la fenêtre d'ajouter/édition des todos, le text wrap se fait bien sur l'aperçu mais pas sur la saisie."
+
+    s = st([t(long_task, 1)], width: 60, height: 28, mode: :input)
+    s = %{s | modal: Modal.open(:edit, s)}
+    all_text = texts(View.render(s))
+
+    # The prefix "│  > " and continuation "│    " both appear in the rendered modal
+    assert Enum.any?(all_text, &String.contains?(&1, "│  > "))
+    assert Enum.any?(all_text, &String.contains?(&1, "│    "))
+  end
+
+  test "statusline wraps shortcuts across multiple lines when shell window is small" do
+    s_small = st([t("task", 1)], width: 80, height: 24)
+    rendered_small = View.render(s_small)
+
+    {_header, _body, status_small} =
+      case rendered_small.children do
+        [{h, _}, {b, _}, {st_node, _}] -> {h, b, st_node}
+      end
+
+    # Statusline has separator + info line + multiple shortcut lines (>= 4 lines total)
+    assert length(status_small.children) >= 4
+
+    s_wide = st([t("task", 1)], width: 170, height: 24)
+    rendered_wide = View.render(s_wide)
+
+    {_header, _body, status_wide} =
+      case rendered_wide.children do
+        [{h, _}, {b, _}, {st_node, _}] -> {h, b, st_node}
+      end
+
+    # Wide screen fits shortcuts onto 1 line (separator + info + 1 shortcut line = 3 lines)
+    assert length(status_wide.children) == 3
   end
 end

@@ -23,7 +23,7 @@ defmodule TodoTxt.Parser do
         _ -> {nil, tokens}
       end
 
-    {creation_date, tokens} = take_date(tokens)
+    {creation_date, tokens} = extract_creation_date(done, tokens)
 
     %Task{
       line: line_no,
@@ -67,6 +67,22 @@ defmodule TodoTxt.Parser do
   end
 
   defp take_date([]), do: {nil, []}
+
+  defp extract_creation_date(true, tokens), do: take_date(tokens)
+
+  defp extract_creation_date(false, tokens) do
+    case take_date(tokens) do
+      {nil, rest} -> {nil, rest}
+      {d1, rest1} -> resolve_double_date(d1, rest1)
+    end
+  end
+
+  defp resolve_double_date(d1, rest1) do
+    case take_date(rest1) do
+      {nil, _} -> {d1, rest1}
+      {d2, rest2} -> {d2, rest2}
+    end
+  end
 
   defp extract_tags(tokens) do
     for t <- tokens,

@@ -34,15 +34,13 @@ defmodule TodoTxt.Tui do
   end
 
   defp detect_dimensions(env) do
-    default_w = env[:width] || 80
-    default_h = env[:height] || 24
+    default_w = Map.get(env, :width, 80)
+    default_h = Map.get(env, :height, 24)
 
-    with {:ok, cols} <- :io.columns(),
-         {:ok, rows} <- :io.rows(),
-         true <- is_integer(cols) and cols > 0,
-         true <- is_integer(rows) and rows > 0 do
-      {cols, rows}
-    else
+    case {:io.columns(), :io.rows()} do
+      {{:ok, cols}, {:ok, rows}} ->
+        {cols, rows}
+
       _ ->
         case Process.whereis(TermUI.Terminal) && TermUI.Terminal.get_terminal_size() do
           {:ok, {rows, cols}} when is_integer(cols) and cols > 0 -> {cols, rows}
@@ -95,7 +93,7 @@ defmodule TodoTxt.Tui do
     env = Map.merge(env, %{width: cols, height: rows})
     # Seed mtimes : sinon le 1er :tick (2 s) déclenche un reload parasite.
     state = State.new(env) |> State.refresh_mtimes()
-    {:ok, state, [Command.interval(2_000, :tick)]}
+    {:ok, state, [Command.interval(1_000, :tick)]}
   end
 
   def event_to_msg(%Event.Resize{width: w, height: h}, _s), do: {:msg, {:resize, w, h}}
@@ -115,6 +113,8 @@ defmodule TodoTxt.Tui do
     * `:sync` — refresh mtimes + clamp selection (single-file mutations)
     * `:reload` — re-read both files, then `:sync` (cross-file mutations)
     * `:watch` — stat both files; `:reload` only if an mtime changed
+    * `:check_resize` — check terminal dimensions and notify on change
+    * `:redraw` — clear terminal and force full redraw
     * `{:status, msg}` / `{:send, pid, msg}`
   """
   @type io_effect ::
@@ -122,6 +122,8 @@ defmodule TodoTxt.Tui do
           | :sync
           | :reload
           | :watch
+          | :check_resize
+          | :redraw
           | {:status, String.t()}
           | {:send, pid(), term()}
 
@@ -188,6 +190,7 @@ defmodule TodoTxt.Tui do
   end
 
   def decide(:reload, s), do: {s, [:reload]}
+  def decide(:redraw, s), do: {s, [:redraw]}
 
   def decide(:toggle_scope, s) do
     new_local = not s.local
@@ -396,12 +399,15 @@ defmodule TodoTxt.Tui do
   defp run_effect(:sync, s), do: {:ok, s |> State.refresh_mtimes() |> State.clamp_selection()}
 
   defp run_effect(:reload, s) do
+    s = check_terminal_resize(s)
+
     with {:ok, %{tasks: tasks, done_tasks: done}} <- Tasks.load(s.io, s.paths) do
       run_effect(:sync, %{s | tasks: tasks, done_tasks: done})
     end
   end
 
   defp run_effect(:watch, s) do
+    s = check_terminal_resize(s)
     todo_m = State.mtime(s.io, s.paths.todo)
     done_m = State.mtime(s.io, s.paths.done)
 
@@ -410,11 +416,35 @@ defmodule TodoTxt.Tui do
       else: run_effect(:reload, %{s | status: "rechargé (fichier modifié)"})
   end
 
+  defp run_effect(:redraw, s) do
+    if pid = Process.whereis(TermUI.Terminal) do
+      send(pid, :sigwinch)
+    end
+
+    IO.write("\e[2J\e[H")
+    {cols, rows} = detect_dimensions(s)
+    {:ok, %{s | width: cols, height: rows, status: "redessiné"}}
+  end
+
   defp run_effect({:status, msg}, s), do: {:ok, %{s | status: msg}}
 
   defp run_effect({:send, pid, msg}, s) do
     send(pid, msg)
     {:ok, s}
+  end
+
+  defp check_terminal_resize(s) do
+    {cols, rows} = detect_dimensions(s)
+
+    if cols != s.width or rows != s.height do
+      if pid = Process.whereis(TermUI.Terminal) do
+        send(pid, :sigwinch)
+      end
+
+      %{s | width: cols, height: rows}
+    else
+      s
+    end
   end
 
   defp persist(:complete, %{task: t}, s), do: Tasks.complete(s.io, s.paths, s.tasks, t, s.today)

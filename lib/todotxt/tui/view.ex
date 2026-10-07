@@ -44,8 +44,12 @@ defmodule TodoTxt.Tui.View do
     stack(:vertical, [
       {header(s), Constraint.length(2)},
       {body(s), Constraint.fill()},
-      {statusline(s), Constraint.length(3)}
+      {statusline(s), Constraint.length(statusline_height(s))}
     ])
+  end
+
+  defp body_height(s) do
+    max(Map.get(s, :height, 24) - 2 - statusline_height(s), 4)
   end
 
   defp header(s) do
@@ -133,7 +137,7 @@ defmodule TodoTxt.Tui.View do
 
   defp sidebar(s) do
     entries = State.sidebar_entries(s)
-    avail_h = max(s.height - 5, 4)
+    avail_h = body_height(s)
 
     entry_nodes =
       Enum.with_index(entries, fn
@@ -289,7 +293,7 @@ defmodule TodoTxt.Tui.View do
   defp detail(s) do
     detail_w = max(round(s.width * 0.30), 24)
     content_w = max(detail_w - 3, 16)
-    avail_h = max(s.height - 5, 4)
+    avail_h = body_height(s)
 
     sep_column =
       stack(:vertical, for(_ <- 1..avail_h, do: text("│", dim(s))))
@@ -672,53 +676,10 @@ defmodule TodoTxt.Tui.View do
     val = TextInput.get_value(modal.widget)
     task = Parser.parse(val, 1)
 
-    preview_lines = wrap_text(val, inner_w)
-    preview_lines = if preview_lines == [], do: [""], else: preview_lines
-
-    preview_row_nodes =
-      Enum.map(preview_lines, fn line ->
-        words = String.split(line, " ", trim: false)
-        line_nodes = build_syntax_nodes(words, s)
-        pad = max(0, inner_w - String.length(line))
-
-        stack(:horizontal, [
-          text("│  ", border_style),
-          stack(:horizontal, line_nodes),
-          text(String.duplicate(" ", pad), nil),
-          text("  │", border_style)
-        ])
-      end)
-
-    tags = []
-    tags = if task.priority, do: ["Prio [#{<<task.priority>>}]" | tags], else: tags
-    tags = if task.projects != [], do: [Enum.join(task.projects, " ") | tags], else: tags
-    tags = if task.contexts != [], do: [Enum.join(task.contexts, " ") | tags], else: tags
-
-    tags =
-      if Map.has_key?(task.tags, "due"), do: ["Échéance: #{task.tags["due"]}" | tags], else: tags
-
-    tags_summary = Enum.reverse(tags) |> Enum.join("  ·  ")
-
-    legend_nodes = [
-      text("│  ", border_style),
-      text("Syntaxe : ", dim(s)),
-      text("+projet", Style.new(fg: :cyan, attrs: [:bold])),
-      text("  ", nil),
-      text("@contexte", Style.new(fg: :magenta, attrs: [:bold])),
-      text("  ", nil),
-      text("(A)", pri(s, ?A)),
-      text("  ", nil),
-      text("due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold])),
-      text(String.duplicate(" ", max(0, inner_w - 49)), nil),
-      text("  │", border_style)
-    ]
-
-    input_node =
-      TextInput.render(%{modal.widget | width: inner_input_w}, %{
-        width: inner_input_w,
-        height: 1
-      })
-      |> fix_cursor_node(inner_input_w)
+    input_row_nodes = build_input_rows(val, modal.widget, inner_input_w, border_style)
+    preview_row_nodes = build_preview_rows(val, s, inner_w, border_style)
+    legend_nodes = build_legend_nodes(s, inner_w, border_style)
+    tags_badge_node = build_tags_badge(task, inner_w, modal_w, border_style)
 
     modal_rows =
       [
@@ -733,43 +694,26 @@ defmodule TodoTxt.Tui.View do
           text("Saisie :", border_style),
           text(String.duplicate(" ", max(0, inner_w - 8)), nil),
           text("  │", border_style)
-        ]),
-        stack(:horizontal, [
-          text("│  > ", border_style),
-          input_node,
-          text("  │", border_style)
-        ]),
-        stack(:horizontal, legend_nodes),
-        stack(:horizontal, [
-          text("│", border_style),
-          text(String.duplicate(" ", modal_w - 2), nil),
-          text("│", border_style)
-        ]),
-        stack(:horizontal, [
-          text("│  ", border_style),
-          text("Aperçu en direct :", border_style),
-          text(String.duplicate(" ", max(0, inner_w - 18)), nil),
-          text("  │", border_style)
         ])
       ] ++
+        input_row_nodes ++
+        [
+          stack(:horizontal, legend_nodes),
+          stack(:horizontal, [
+            text("│", border_style),
+            text(String.duplicate(" ", modal_w - 2), nil),
+            text("│", border_style)
+          ]),
+          stack(:horizontal, [
+            text("│  ", border_style),
+            text("Aperçu en direct :", border_style),
+            text(String.duplicate(" ", max(0, inner_w - 18)), nil),
+            text("  │", border_style)
+          ])
+        ] ++
         preview_row_nodes ++
         [
-          if tags_summary != "" do
-            badge = fit_text(tags_summary, inner_w)
-
-            stack(:horizontal, [
-              text("│  ", border_style),
-              text(badge, Style.new(fg: :green)),
-              text(String.duplicate(" ", max(0, inner_w - String.length(badge))), nil),
-              text("  │", border_style)
-            ])
-          else
-            stack(:horizontal, [
-              text("│", border_style),
-              text(String.duplicate(" ", modal_w - 2), nil),
-              text("│", border_style)
-            ])
-          end,
+          tags_badge_node,
           stack(:horizontal, [
             text("│", border_style),
             text(String.duplicate(" ", modal_w - 2), nil),
@@ -785,7 +729,7 @@ defmodule TodoTxt.Tui.View do
         ]
 
     box_h = length(modal_rows)
-    top_pad = max(div(max(s.height - 5, 4) - box_h, 2), 0)
+    top_pad = max(div(body_height(s) - box_h, 2), 0)
     left_pad = max(div(s.width - modal_w, 2), 1)
 
     padded_box =
@@ -797,6 +741,165 @@ defmodule TodoTxt.Tui.View do
       end)
 
     stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
+  end
+
+  defp build_input_rows(val, widget, inner_input_w, border_style) do
+    cursor_pos = Map.get(widget, :cursor_col, String.length(val))
+    {lines, cur_line, cur_col} = wrap_input_with_cursor(val, cursor_pos, inner_input_w)
+
+    Enum.with_index(lines, fn line, idx ->
+      line_node = render_input_line(line, idx == cur_line, cur_col, inner_input_w)
+      prefix = if idx == 0, do: "│  > ", else: "│    "
+
+      stack(:horizontal, [
+        text(prefix, border_style),
+        line_node,
+        text("  │", border_style)
+      ])
+    end)
+  end
+
+  defp build_preview_rows(val, s, inner_w, border_style) do
+    preview_lines = wrap_text(val, inner_w)
+    preview_lines = if preview_lines == [], do: [""], else: preview_lines
+
+    Enum.map(preview_lines, fn line ->
+      words = String.split(line, " ", trim: false)
+      line_nodes = build_syntax_nodes(words, s)
+      pad = max(0, inner_w - String.length(line))
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        stack(:horizontal, line_nodes),
+        text(String.duplicate(" ", pad), nil),
+        text("  │", border_style)
+      ])
+    end)
+  end
+
+  defp build_legend_nodes(s, inner_w, border_style) do
+    [
+      text("│  ", border_style),
+      text("Syntaxe : ", dim(s)),
+      text("+projet", Style.new(fg: :cyan, attrs: [:bold])),
+      text("  ", nil),
+      text("@contexte", Style.new(fg: :magenta, attrs: [:bold])),
+      text("  ", nil),
+      text("(A)", pri(s, ?A)),
+      text("  ", nil),
+      text("due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold])),
+      text(String.duplicate(" ", max(0, inner_w - 49)), nil),
+      text("  │", border_style)
+    ]
+  end
+
+  defp build_tags_badge(task, inner_w, modal_w, border_style) do
+    tags = []
+    tags = if task.priority, do: ["Prio [#{<<task.priority>>}]" | tags], else: tags
+    tags = if task.projects != [], do: [Enum.join(task.projects, " ") | tags], else: tags
+    tags = if task.contexts != [], do: [Enum.join(task.contexts, " ") | tags], else: tags
+
+    tags =
+      if Map.has_key?(task.tags, "due"), do: ["Échéance: #{task.tags["due"]}" | tags], else: tags
+
+    summary = Enum.reverse(tags) |> Enum.join("  ·  ")
+
+    if summary != "" do
+      badge = fit_text(summary, inner_w)
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(badge, Style.new(fg: :green)),
+        text(String.duplicate(" ", max(0, inner_w - String.length(badge))), nil),
+        text("  │", border_style)
+      ])
+    else
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ])
+    end
+  end
+
+  defp wrap_input_with_cursor("", _cursor_pos, _max_w) do
+    {[""], 0, 0}
+  end
+
+  defp wrap_input_with_cursor(text, cursor_pos, max_w) do
+    tokens = Regex.scan(~r/\S+\s*|\s+/, text) |> List.flatten()
+    lines = do_input_wrap(tokens, max_w, "", [])
+    {cursor_line, cursor_col} = find_cursor_pos(lines, cursor_pos, 0, 0)
+    {lines, cursor_line, cursor_col}
+  end
+
+  defp do_input_wrap([], _max_w, current, acc) do
+    if current == "", do: Enum.reverse(acc), else: Enum.reverse([current | acc])
+  end
+
+  defp do_input_wrap([tok | rest], max_w, "", acc) do
+    if String.length(tok) > max_w do
+      {head, tail} = String.split_at(tok, max_w)
+      do_input_wrap([tail | rest], max_w, "", [head | acc])
+    else
+      do_input_wrap(rest, max_w, tok, acc)
+    end
+  end
+
+  defp do_input_wrap([tok | rest], max_w, current, acc) do
+    if String.length(current <> tok) <= max_w do
+      do_input_wrap(rest, max_w, current <> tok, acc)
+    else
+      do_input_wrap([tok | rest], max_w, "", [current | acc])
+    end
+  end
+
+  defp find_cursor_pos([_last_line], cursor_pos, cur_idx, line_start) do
+    {cur_idx, max(0, cursor_pos - line_start)}
+  end
+
+  defp find_cursor_pos([line | rest], cursor_pos, cur_idx, line_start) do
+    line_end = line_start + String.length(line)
+
+    if cursor_pos < line_end do
+      {cur_idx, cursor_pos - line_start}
+    else
+      find_cursor_pos(rest, cursor_pos, cur_idx + 1, line_end)
+    end
+  end
+
+  defp render_input_line(line, true, col, max_w) do
+    line_len = String.length(line)
+
+    if col < line_len do
+      before_txt = String.slice(line, 0, col)
+      cur_char = String.slice(line, col, 1)
+      after_txt = String.slice(line, (col + 1)..-1//1)
+      disp_char = if cur_char in [" ", ""], do: "█", else: cur_char
+      cursor_st = Style.new(fg: :cyan, bg: :black, attrs: [:reverse, :bold])
+      pad = max(0, max_w - line_len)
+
+      stack(:horizontal, [
+        text(before_txt, nil),
+        text(disp_char, cursor_st),
+        text(after_txt, nil),
+        text(String.duplicate(" ", pad), nil)
+      ])
+    else
+      cursor_st = Style.new(fg: :cyan, bg: :black, attrs: [:reverse, :bold])
+      pad = max(0, max_w - (line_len + 1))
+
+      stack(:horizontal, [
+        text(line, nil),
+        text("█", cursor_st),
+        text(String.duplicate(" ", pad), nil)
+      ])
+    end
+  end
+
+  defp render_input_line(line, false, _col, max_w) do
+    pad = max(0, max_w - String.length(line))
+    stack(:horizontal, [text(line, nil), text(String.duplicate(" ", pad), nil)])
   end
 
   defp fix_cursor_node(node, target_w) do
@@ -861,11 +964,18 @@ defmodule TodoTxt.Tui.View do
     end)
   end
 
-  defp word_style(w, %{plain: true}) do
-    if String.match?(w, ~r/^\([A-Z]\)$/) or String.starts_with?(w, "+") or
-         String.starts_with?(w, "@"),
-       do: Style.new(attrs: [:bold]),
-       else: nil
+  defp word_style(w, %{plain: true} = s) do
+    cond do
+      String.starts_with?(w, "due:") ->
+        due_style(w, s)
+
+      String.match?(w, ~r/^\([A-Z]\)$/) or String.starts_with?(w, "+") or
+          String.starts_with?(w, "@") ->
+        Style.new(attrs: [:bold])
+
+      true ->
+        nil
+    end
   end
 
   defp word_style(w, s) do
@@ -880,7 +990,7 @@ defmodule TodoTxt.Tui.View do
         Style.new(fg: :magenta, attrs: [:bold])
 
       String.starts_with?(w, "due:") ->
-        Style.new(fg: :yellow, attrs: [:bold])
+        due_style(w, s)
 
       String.starts_with?(w, "t:") ->
         Style.new(fg: :blue, attrs: [:bold])
@@ -894,6 +1004,35 @@ defmodule TodoTxt.Tui.View do
       true ->
         nil
     end
+  end
+
+  defp due_style(w, %{plain: true}) do
+    val = String.replace_prefix(w, "due:", "")
+
+    if valid_due_val?(val),
+      do: Style.new(attrs: [:bold]),
+      else: Style.new(attrs: [:bold, :underline])
+  end
+
+  defp due_style(w, _s) do
+    val = String.replace_prefix(w, "due:", "")
+
+    if valid_due_val?(val),
+      do: Style.new(fg: :yellow, attrs: [:bold]),
+      else: Style.new(fg: :red, attrs: [:bold, :underline])
+  end
+
+  defp valid_due_val?(val) do
+    case Date.from_iso8601(val) do
+      {:ok, _} -> true
+      _ -> val != "" and Regex.match?(~r/^[a-zA-Z]+$/, val)
+    end
+  end
+
+  defp statusline_height(%{mode: :input}), do: 3
+
+  defp statusline_height(s) do
+    2 + length(shortcuts_lines(s))
   end
 
   defp statusline(%{mode: :input, modal: %{widget_mod: TextInput, action: a}} = s)
@@ -932,9 +1071,9 @@ defmodule TodoTxt.Tui.View do
 
     sep = text(build_separator(s), dim(s))
     line1 = text(" #{view} #{scope}#{filters}#{status}", status_style(s, is_error))
-    line2 = text(shortcuts_text(s), dim(s))
+    shortcut_nodes = Enum.map(shortcuts_lines(s), &text(&1, dim(s)))
 
-    stack(:vertical, [sep, line1, line2])
+    stack(:vertical, [sep, line1 | shortcut_nodes])
   end
 
   defp build_separator(s) do
@@ -955,25 +1094,80 @@ defmodule TodoTxt.Tui.View do
     Enum.join(chars)
   end
 
-  defp shortcuts_text(%{focus: :sidebar} = s) do
-    if is_integer(s.width) and s.width < 100 do
-      " Tab/l:Tâches  j/k:Nav  Entrée:Filtrer  /:Filtre  ?:Aide  q:Quitter"
+  defp shortcuts_lines(s) do
+    items = if s.focus == :sidebar, do: sidebar_shortcut_items(), else: list_shortcut_items(s)
+    max_w = max((s.width || 80) - 2, 20)
+    wrap_shortcut_items(items, max_w, "", [])
+  end
+
+  defp sidebar_shortcut_items do
+    [
+      "Tab/l: Liste",
+      "j/k: Naviguer",
+      "Entrée: Filtrer",
+      "/: Filtrer",
+      "^L: Nettoyer",
+      "?: Aide",
+      "q: Quitter"
+    ]
+  end
+
+  defp list_shortcut_items(s) do
+    selected = State.selected_task(s)
+    is_done = s.view == :done or (selected != nil and selected.done)
+    x_label = if is_done, do: "x: Reprendre", else: "x: Terminer"
+    m_label = "m: Déplacer"
+
+    if is_integer(s.width) and s.width < 110 do
+      [
+        "a:Ajouter",
+        "e:Modifier",
+        String.replace(x_label, " ", ""),
+        "d:Supprimer",
+        "p:Priorité",
+        String.replace(m_label, " ", ""),
+        "L:Scope",
+        "Tab/h:Menu",
+        "/:Filtrer",
+        "E:Éditeur",
+        "^L:Nettoyer",
+        "?:Aide",
+        "q:Quitter"
+      ]
     else
-      " Tab/l: Liste des tâches   j/k: Naviguer   Entrée: Filtrer / Sélectionner   /: Filtrer   ?: Aide   q: Quitter"
+      [
+        "a: Ajouter",
+        "e: Modifier",
+        x_label,
+        "d: Supprimer",
+        "p: Priorité",
+        m_label,
+        "L: Scope",
+        "Tab/h: Menu",
+        "/: Filtrer",
+        "E: Éditeur",
+        "^L: Nettoyer",
+        "?: Aide",
+        "q: Quitter"
+      ]
     end
   end
 
-  defp shortcuts_text(s) do
-    selected = State.selected_task(s)
-    is_done = s.view == :done or (selected != nil and selected.done)
+  defp wrap_shortcut_items([], _max_w, current, acc) do
+    if current == "", do: Enum.reverse(acc), else: Enum.reverse([current | acc])
+  end
 
-    x_label = if is_done, do: "x:Reprendre", else: "x:Terminer"
-    m_label = "m:Déplacer"
+  defp wrap_shortcut_items([item | rest], max_w, "", acc) do
+    wrap_shortcut_items(rest, max_w, " " <> item, acc)
+  end
 
-    if is_integer(s.width) and s.width < 100 do
-      " a:Ajouter  e:Modifier  #{x_label}  d:Supprimer  p:Priorité  #{m_label}  Tab/h:Menu  /:Filtrer  ?:Aide  q:Quitter"
+  defp wrap_shortcut_items([item | rest], max_w, current, acc) do
+    candidate = current <> "  " <> item
+
+    if String.length(candidate) <= max_w do
+      wrap_shortcut_items(rest, max_w, candidate, acc)
     else
-      " a: Ajouter  e: Modifier  #{x_label}  d: Supprimer  p: Priorité  #{m_label}  L: Scope  Tab/h: Menu  /: Filtrer  E: Éditeur  ?: Aide  q: Quitter"
+      wrap_shortcut_items(rest, max_w, " " <> item, [current | acc])
     end
   end
 end

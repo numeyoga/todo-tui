@@ -106,20 +106,31 @@ defmodule TodoTxt.Ops do
   `due:` (sorted by date), then open tasks whose `t:` falls in the window.
   Overdue and done tasks are excluded — same data as `Commands.Agenda`.
   """
-  @spec agenda([Task.t()], Date.t()) :: {[{Date.t(), [Task.t()]}], [Task.t()]}
+  @spec agenda([Task.t()], Date.t()) :: {[{Date.t() | String.t(), [Task.t()]}], [Task.t()]}
   def agenda(tasks, today) do
     horizon = Date.add(today, @days)
     open = Enum.reject(tasks, & &1.done)
 
-    in_range? = fn d ->
-      not is_nil(d) and Date.compare(d, today) != :lt and Date.compare(d, horizon) != :gt
+    in_range? = fn
+      %Date{} = d ->
+        Date.compare(d, today) != :lt and Date.compare(d, horizon) != :gt
+
+      word when is_binary(word) ->
+        true
+
+      _ ->
+        false
     end
 
     groups =
       open
-      |> Enum.group_by(&Query.due_date/1)
-      |> Enum.reject(fn {d, _} -> not in_range?.(d) end)
-      |> Enum.sort_by(fn {d, _} -> d end, Date)
+      |> Enum.group_by(&Query.due_key/1)
+      |> Enum.reject(fn {key, _} -> not in_range?.(key) end)
+      |> Enum.sort_by(fn
+        {"ASAP", _} -> {0, ~D[1970-01-01], "ASAP"}
+        {word, _} when is_binary(word) -> {1, ~D[1970-01-01], word}
+        {%Date{} = d, _} -> {2, d, ""}
+      end)
 
     thresholds =
       open
