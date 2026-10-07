@@ -167,4 +167,30 @@ defmodule TodoTxt.Tui.RatatuiAppTest do
     assert_receive {:tui_exit, :edit}, 1000
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
   end
+
+  test "Ctrl+L triggers redraw sequence and clears screen" do
+    env = test_env()
+    {:ok, pid} = Tui.start_link(name: nil, test_mode: {80, 24}, env: env)
+
+    snap_before = Runtime.snapshot(pid)
+    assert snap_before.render_count >= 1
+
+    # Inject Ctrl+L
+    assert :ok == Runtime.inject_event(pid, %Key{code: "l", modifiers: ["ctrl"]})
+
+    # Let the GenServer process the subsequent :redraw_finish info message
+    Process.sleep(50)
+
+    snap_after = Runtime.snapshot(pid)
+    assert snap_after.render_count >= snap_before.render_count + 2
+
+    sys_state = :sys.get_state(pid)
+    assert sys_state.user_state.status == "redessiné"
+    assert sys_state.user_state.redraw_clearing == false
+
+    # Terminate
+    ref = Process.monitor(pid)
+    assert :ok == Runtime.inject_event(pid, %Key{code: "q", modifiers: []})
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+  end
 end

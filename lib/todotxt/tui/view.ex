@@ -1046,7 +1046,14 @@ defmodule TodoTxt.Tui.View do
   end
 
   defp render_input_modal(s, modal) do
-    modal_w = min(max(round(s.width * 0.70), 56), 96)
+    modal_w =
+      s.width
+      |> Kernel.*(0.78)
+      |> round()
+      |> max(58)
+      |> min(96)
+      |> min(max(s.width - 4, 50))
+
     inner_w = modal_w - 6
     inner_input_w = inner_w - 2
     border_style = accent(s)
@@ -1062,17 +1069,35 @@ defmodule TodoTxt.Tui.View do
 
     input_row_nodes = build_input_rows(val, modal.widget, inner_input_w, border_style)
     preview_row_nodes = build_preview_rows(val, s, inner_w, border_style)
-    legend_row_nodes = build_legend_rows(s, inner_w, border_style)
     tags_badge_nodes = build_tags_badge_rows(task, inner_w, modal_w, border_style)
+
+    table_header =
+      "├─ Syntaxe : Légende détaillée " <>
+        String.duplicate("─", max(0, modal_w - 32)) <>
+        "┤"
+
+    legend_table_rows = build_legend_table(s, inner_w, border_style)
+
+    button_divider = "├" <> String.duplicate("─", modal_w - 2) <> "┤"
+
+    btn_text =
+      if inner_w < 53 do
+        "[Entrée] Valider  [Échap] Annuler  [^U] Vider"
+      else
+        "[Entrée] Valider    [Échap] Annuler    [Ctrl+U] Vider"
+      end
+
+    empty_line =
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ])
 
     modal_rows =
       [
         text(top_border, border_style),
-        stack(:horizontal, [
-          text("│", border_style),
-          text(String.duplicate(" ", modal_w - 2), nil),
-          text("│", border_style)
-        ]),
+        empty_line,
         stack(:horizontal, [
           text("│  ", border_style),
           text("Saisie :", border_style),
@@ -1081,13 +1106,8 @@ defmodule TodoTxt.Tui.View do
         ])
       ] ++
         input_row_nodes ++
-        legend_row_nodes ++
         [
-          stack(:horizontal, [
-            text("│", border_style),
-            text(String.duplicate(" ", modal_w - 2), nil),
-            text("│", border_style)
-          ]),
+          empty_line,
           stack(:horizontal, [
             text("│  ", border_style),
             text("Aperçu en direct :", border_style),
@@ -1098,15 +1118,15 @@ defmodule TodoTxt.Tui.View do
         preview_row_nodes ++
         tags_badge_nodes ++
         [
-          stack(:horizontal, [
-            text("│", border_style),
-            text(String.duplicate(" ", modal_w - 2), nil),
-            text("│", border_style)
-          ]),
+          text(table_header, border_style)
+        ] ++
+        legend_table_rows ++
+        [
+          text(button_divider, border_style),
           stack(:horizontal, [
             text("│  ", border_style),
-            text("[Entrée] Valider    [Échap] Annuler", dim(s)),
-            text(String.duplicate(" ", max(0, inner_w - 35)), nil),
+            text(btn_text, dim(s)),
+            text(String.duplicate(" ", max(0, inner_w - String.length(btn_text))), nil),
             text("  │", border_style)
           ]),
           text(bot_border, border_style)
@@ -1161,75 +1181,56 @@ defmodule TodoTxt.Tui.View do
     end)
   end
 
-  defp build_legend_rows(s, inner_w, border_style) do
-    tokens = [
-      {"Syntaxe :", dim(s)},
-      {"+projet", Style.new(fg: :cyan, attrs: [:bold])},
-      {"@contexte", Style.new(fg: :magenta, attrs: [:bold])},
-      {"(A)", pri(s, ?A)},
-      {"due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold])},
-      {"t:AAAA-MM-JJ", Style.new(fg: :blue, attrs: [:bold])},
-      {"rec:1w", Style.new(fg: :yellow)},
-      {"count:N", Style.new(fg: :yellow)},
-      {"min:MIN", Style.new(fg: :blue)},
-      {"id:ID", Style.new(fg: :green, attrs: [:bold])},
-      {"dep:ID", Style.new(fg: :red)},
-      {"note:NOTE", Style.new(fg: :cyan)},
-      {"h:1", Style.new(fg: :magenta)}
+  defp build_legend_table(s, inner_w, border_style) do
+    col1_items = [
+      {"(A)", pri(s, ?A), "Priorité (A-Z)"},
+      {"due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold]), "Échéance"},
+      {"t:AAAA-MM-JJ", Style.new(fg: :blue, attrs: [:bold]), "Date début"},
+      {"id:ID", Style.new(fg: :green, attrs: [:bold]), "Identifiant"},
+      {"min:MIN", Style.new(fg: :blue), "Durée (min)"},
+      {"note:NOTE", Style.new(fg: :cyan), "Note .md"}
     ]
 
-    wrapped_lines = wrap_legend_tokens(tokens, inner_w)
-    Enum.map(wrapped_lines, &build_single_legend_row(&1, inner_w, border_style))
-  end
+    col2_items = [
+      {"+projet", Style.new(fg: :cyan, attrs: [:bold]), "Projet"},
+      {"@contexte", Style.new(fg: :magenta, attrs: [:bold]), "Contexte"},
+      {"rec:1w", Style.new(fg: :yellow), "Récurrence"},
+      {"dep:ID", Style.new(fg: :red), "Dépendance"},
+      {"count:N", Style.new(fg: :yellow), "Compteur"},
+      {"h:1", Style.new(fg: :magenta), "Masquée"}
+    ]
 
-  defp build_single_legend_row(line_tokens, inner_w, border_style) do
-    row_nodes = format_legend_token_nodes(line_tokens)
-    total_len = legend_line_length(line_tokens)
-    pad = max(0, inner_w - total_len)
+    col1_w = div(inner_w - 3, 2)
+    col2_w = inner_w - 3 - col1_w
 
-    stack(:horizontal, [
-      text("│  ", border_style),
-      stack(:horizontal, row_nodes),
-      text(String.duplicate(" ", pad), nil),
-      text("  │", border_style)
-    ])
-  end
+    Enum.zip(col1_items, col2_items)
+    |> Enum.map(fn {item1, item2} ->
+      col1_nodes = format_legend_cell(item1, col1_w, 15, s)
+      col2_nodes = format_legend_cell(item2, col2_w, 11, s)
 
-  defp format_legend_token_nodes(line_tokens) do
-    Enum.flat_map(Enum.with_index(line_tokens), fn {{text_str, style}, idx} ->
-      sep = if idx > 0, do: [text(" ", nil)], else: []
-      sep ++ [text(text_str, style)]
+      stack(:horizontal, [
+        text("│  ", border_style),
+        stack(:horizontal, col1_nodes),
+        text(" │ ", dim(s)),
+        stack(:horizontal, col2_nodes),
+        text("  │", border_style)
+      ])
     end)
   end
 
-  defp legend_line_length(line_tokens) do
-    text_lens = Enum.map(line_tokens, fn {text_str, _} -> String.length(text_str) end)
-    Enum.sum(text_lens) + max(0, length(line_tokens) - 1)
-  end
+  defp format_legend_cell({key, key_style, desc}, col_w, preferred_key_pad, s) do
+    key_len = String.length(key)
+    desc_len = String.length(desc)
+    key_pad = min(preferred_key_pad, max(key_len + 1, col_w - desc_len))
+    spaces_after_key = max(1, key_pad - key_len)
+    trailing_pad = max(0, col_w - (key_len + spaces_after_key + desc_len))
 
-  defp wrap_legend_tokens(tokens, max_w) do
-    do_wrap_legend_tokens(tokens, max_w, 0, [], [])
-  end
-
-  defp do_wrap_legend_tokens([], _max_w, _curr_len, current_line, acc) do
-    Enum.reverse([Enum.reverse(current_line) | acc])
-  end
-
-  defp do_wrap_legend_tokens([{str, _} = token | rest], max_w, curr_len, current_line, acc) do
-    token_len = String.length(str)
-    added_len = if current_line == [], do: token_len, else: token_len + 1
-
-    if curr_len + added_len <= max_w or current_line == [] do
-      do_wrap_legend_tokens(rest, max_w, curr_len + added_len, [token | current_line], acc)
-    else
-      do_wrap_legend_tokens(
-        [token | rest],
-        max_w,
-        0,
-        [],
-        [Enum.reverse(current_line) | acc]
-      )
-    end
+    [
+      text(key, key_style),
+      text(String.duplicate(" ", spaces_after_key), nil),
+      text(desc, dim(s)),
+      text(String.duplicate(" ", trailing_pad), nil)
+    ]
   end
 
   defp build_tags_badge_rows(task, inner_w, modal_w, border_style) do

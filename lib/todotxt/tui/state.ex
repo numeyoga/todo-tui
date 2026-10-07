@@ -25,7 +25,8 @@ defmodule TodoTxt.Tui.State do
             io: nil,
             opts: %{},
             local: false,
-            show_hidden: false
+            show_hidden: false,
+            redraw_clearing: false
 
   def new(env) do
     opts = env[:opts] || %{}

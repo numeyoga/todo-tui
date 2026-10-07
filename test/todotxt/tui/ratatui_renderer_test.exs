@@ -105,4 +105,12 @@ defmodule TodoTxt.Tui.RatatuiRendererTest do
     assert Enum.any?(rendered_lines, &String.contains?(&1, "—"))
     assert Enum.all?(rendered_lines, &String.starts_with?(&1, "│"))
   end
+
+  test "renders Clear widget covering the frame when redraw_clearing is true" do
+    state = %{State.new(%{tasks: [], width: 80, height: 24}) | redraw_clearing: true}
+    frame = %{width: 80, height: 24}
+
+    widgets = RatatuiRenderer.render(state, frame)
+    assert [{%ExRatatui.Widgets.Clear{}, %Rect{x: 0, y: 0, width: 80, height: 24}}] = widgets
+  end
 end

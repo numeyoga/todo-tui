@@ -316,6 +316,7 @@ defmodule TodoTxt.Tui do
 
   def decide(:reload, s), do: {s, [:reload]}
   def decide(:redraw, s), do: {s, [:redraw]}
+  def decide(:redraw_finish, s), do: {%{s | redraw_clearing: false}, []}
 
   def decide(:toggle_scope, s) do
     new_local = not s.local
@@ -711,7 +712,8 @@ defmodule TodoTxt.Tui do
 
     clear_screen_and_buffers()
     {cols, rows} = detect_dimensions(s)
-    {:ok, %{s | width: cols, height: rows, status: "redessiné"}}
+    Process.send_after(self(), :redraw_finish, 25)
+    {:ok, %{s | width: cols, height: rows, status: "redessiné", redraw_clearing: true}}
   end
 
   defp run_effect(:redraw_silent, s) do
@@ -727,8 +729,6 @@ defmodule TodoTxt.Tui do
   end
 
   defp clear_screen_and_buffers do
-    IO.write("\e[2J\e[H")
-
     terms = :persistent_term.get()
 
     for {{BufferManager, _name, :previous}, buffer} <- terms do

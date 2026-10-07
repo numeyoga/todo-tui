@@ -398,13 +398,18 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(all_text, &String.contains?(&1, "Fermer l'aide"))
   end
 
-  test "input modal displays all special keywords in wrapped legend" do
+  test "input modal displays all special keywords with concise explanations in footer table" do
     s = st([t("task 1", 1)], width: 70, height: 24, mode: :input)
     s = %{s | modal: Modal.open(:add, s)}
     rendered = View.render(s)
     all_text = texts(rendered)
 
+    # Table header and visual separation
     assert Enum.any?(all_text, &String.contains?(&1, "Syntaxe :"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Légende détaillée"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Aperçu en direct :"))
+
+    # Keywords
     assert Enum.any?(all_text, &String.contains?(&1, "+projet"))
     assert Enum.any?(all_text, &String.contains?(&1, "@contexte"))
     assert Enum.any?(all_text, &String.contains?(&1, "due:AAAA-MM-JJ"))
@@ -415,6 +420,24 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(all_text, &String.contains?(&1, "dep:ID"))
     assert Enum.any?(all_text, &String.contains?(&1, "note:NOTE"))
     assert Enum.any?(all_text, &String.contains?(&1, "h:1"))
+
+    # Concise explanations
+    assert Enum.any?(all_text, &String.contains?(&1, "Priorité (A-Z)"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Échéance"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Date début"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Identifiant"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Durée (min)"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Note .md"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Projet"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Contexte"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Récurrence"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Dépendance"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Compteur"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Masquée"))
+
+    # Actions footer
+    assert Enum.any?(all_text, &String.contains?(&1, "[Entrée] Valider"))
+    assert Enum.any?(all_text, &String.contains?(&1, "[Échap] Annuler"))
   end
 
   test "statusline renders grouped shortcuts with category tokens and colors" do

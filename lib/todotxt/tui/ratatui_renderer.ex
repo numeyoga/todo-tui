@@ -18,39 +18,44 @@ defmodule TodoTxt.Tui.RatatuiRenderer do
     h = max(frame.height, 1)
     state = Map.merge(state, %{width: w, height: h})
 
-    tree = View.render(state)
+    if Map.get(state, :redraw_clearing, false) do
+      root_rect = %Rect{x: 0, y: 0, width: w, height: h}
+      [{%Clear{}, root_rect}]
+    else
+      tree = View.render(state)
 
-    root_rect = %Rect{x: 0, y: 0, width: w, height: h}
-    status_h = View.statusline_height(state)
+      root_rect = %Rect{x: 0, y: 0, width: w, height: h}
+      status_h = View.statusline_height(state)
 
-    [header_rect, body_rect, status_rect] =
-      Layout.split(root_rect, :vertical, [
-        {:length, 2},
-        {:fill, 1},
-        {:length, status_h}
-      ])
+      [header_rect, body_rect, status_rect] =
+        Layout.split(root_rect, :vertical, [
+          {:length, 2},
+          {:fill, 1},
+          {:length, status_h}
+        ])
 
-    {header_node, body_node, status_node} = unpack_root(tree)
+      {header_node, body_node, status_node} = unpack_root(tree)
 
-    header_w = %Paragraph{text: to_ratatui_lines(header_node)}
-    status_w = %Paragraph{text: to_ratatui_lines(status_node)}
+      header_w = %Paragraph{text: to_ratatui_lines(header_node)}
+      status_w = %Paragraph{text: to_ratatui_lines(status_node)}
 
-    base_widgets = [
-      {header_w, header_rect},
-      {status_w, status_rect}
-    ]
+      base_widgets = [
+        {header_w, header_rect},
+        {status_w, status_rect}
+      ]
 
-    body_widgets =
-      if state.mode == :input and not is_nil(state.modal) do
-        # Modal is open: render modal overlay over body
-        modal_w = %Paragraph{text: to_ratatui_lines(body_node)}
-        [{%Clear{}, body_rect}, {modal_w, body_rect}]
-      else
-        # 3-pane body
-        render_3pane(body_node, body_rect, w)
-      end
+      body_widgets =
+        if state.mode == :input and not is_nil(state.modal) do
+          # Modal is open: render modal overlay over body
+          modal_w = %Paragraph{text: to_ratatui_lines(body_node)}
+          [{%Clear{}, body_rect}, {modal_w, body_rect}]
+        else
+          # 3-pane body
+          render_3pane(body_node, body_rect, w)
+        end
 
-    base_widgets ++ body_widgets
+      base_widgets ++ body_widgets
+    end
   end
 
   defp unpack_root(%RenderNode{children: [{h, _}, {b, _}, {s, _}]}), do: {h, b, s}
