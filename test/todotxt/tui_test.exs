@@ -94,7 +94,10 @@ defmodule TodoTxt.TuiTest do
 
     io = %{
       fake_io()
-      | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+      | write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end,
         append: fn _, _ -> :ok end
     }
 
@@ -106,7 +109,15 @@ defmodule TodoTxt.TuiTest do
 
   test "x on done task reopens; recur spawns next occurrence in the write" do
     test_pid = self()
-    io = %{fake_io() | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end}
+
+    io = %{
+      fake_io()
+      | write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end
+    }
+
     s = state([t("x 2026-09-20 a", 1)], io: io)
     {s2, _} = Tui.update(:toggle_done, s)
     refute hd(s2.tasks).done
@@ -122,7 +133,15 @@ defmodule TodoTxt.TuiTest do
 
   test "x with malformed recur toasts error, no write" do
     test_pid = self()
-    io = %{fake_io() | write: fn _, _ -> send(test_pid, :wrote) && :ok end}
+
+    io = %{
+      fake_io()
+      | write: fn _, _ ->
+          send(test_pid, :wrote)
+          :ok
+        end
+    }
+
     s = state([t("r recur:bad", 1)], io: io)
     {s2, _} = Tui.update(:toggle_done, s)
     refute hd(s2.tasks).done
@@ -139,8 +158,14 @@ defmodule TodoTxt.TuiTest do
 
     io = %{
       fake_io()
-      | append: fn p, _ts -> send(test_pid, {:append, p}) && :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+      | append: fn p, _ts ->
+          send(test_pid, {:append, p})
+          :ok
+        end,
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end
     }
 
     s = state([t("a", 1)], io: io)
@@ -162,8 +187,14 @@ defmodule TodoTxt.TuiTest do
 
     io = %{
       fake_io()
-      | append: fn p, ts -> send(test_pid, {:append, p, ts}) && :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+      | append: fn p, ts ->
+          send(test_pid, {:append, p, ts})
+          :ok
+        end,
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end
     }
 
     s = state([t("a", 1)], io: io, view: :done, done_tasks: [t("x 2026-09-20 fini", 7)])
@@ -180,7 +211,15 @@ defmodule TodoTxt.TuiTest do
 
   test "del confirm on a task that vanished errors without writing" do
     test_pid = self()
-    io = %{fake_io() | write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end}
+
+    io = %{
+      fake_io()
+      | write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end
+    }
+
     s = state([t("a", 1), t("b", 2)], io: io, list_idx: 1)
     {s2, []} = Tui.update({:open_modal, :del}, s)
     # La tâche a disparu entre l'ouverture du modal et la confirmation.
@@ -196,8 +235,14 @@ defmodule TodoTxt.TuiTest do
 
     io = %{
       fake_io()
-      | append: fn p, _ts -> send(test_pid, {:append, p}) && :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+      | append: fn p, _ts ->
+          send(test_pid, {:append, p})
+          :ok
+        end,
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end,
         # Après le déplacement, done.txt ne contient plus que d1 : le reload
         # final relit les deux fichiers.
         read: fn
@@ -240,7 +285,15 @@ defmodule TodoTxt.TuiTest do
 
   test "a opens add modal; typing routes to TextInput; Enter submits" do
     test_pid = self()
-    io = %{fake_io() | append: fn p, ts -> send(test_pid, {:append, p, ts}) && :ok end}
+
+    io = %{
+      fake_io()
+      | append: fn p, ts ->
+          send(test_pid, {:append, p, ts})
+          :ok
+        end
+    }
+
     s = state([t("x", 1)], io: io)
 
     {s2, []} = Tui.update({:open_modal, :add}, s)
@@ -337,7 +390,10 @@ defmodule TodoTxt.TuiTest do
           "t" -> {:ok, %{mtime: new}}
           _ -> {:error, :enoent}
         end,
-        read: fn _ -> send(test_pid, :reread) && {:ok, []} end
+        read: fn _ ->
+          send(test_pid, :reread)
+          {:ok, []}
+        end
     }
 
     s = state([], io: io)
@@ -378,8 +434,12 @@ defmodule TodoTxt.TuiTest do
       | append: fn _, _ -> :ok end,
         write: fn _, _ -> :ok end,
         read: fn
-          "t" -> send(test_pid, :reloaded_todo) && {:ok, [t("a", 1), t("fini", 8)]}
-          "d" -> {:ok, []}
+          "t" ->
+            send(test_pid, :reloaded_todo)
+            {:ok, [t("a", 1), t("fini", 8)]}
+
+          "d" ->
+            {:ok, []}
         end
     }
 
@@ -399,7 +459,10 @@ defmodule TodoTxt.TuiTest do
     io = %{
       fake_io()
       | append: fn _, _ -> :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end,
         read: fn
           "t" -> {:ok, []}
           "d" -> {:ok, [moved, survivor]}
@@ -428,7 +491,10 @@ defmodule TodoTxt.TuiTest do
     io = %{
       fake_io()
       | append: fn _, _ -> :ok end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end,
         read: fn
           "t" -> {:ok, [t("open", 1)]}
           "d" -> {:ok, [done1, old]}
@@ -508,7 +574,10 @@ defmodule TodoTxt.TuiTest do
     io = %{
       fake_io()
       | append: fn _, _ -> {:error, "disk full"} end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end
     }
 
     s = state([t("a", 1)], io: io)

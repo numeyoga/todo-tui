@@ -13,9 +13,18 @@ defmodule TodoTxt.TasksTest do
 
     Map.merge(
       %{
-        read: fn p -> send(pid, {:read, p}) && {:ok, []} end,
-        write: fn p, ts -> send(pid, {:write, p, ts}) && :ok end,
-        append: fn p, ts -> send(pid, {:append, p, ts}) && :ok end
+        read: fn p ->
+          send(pid, {:read, p})
+          {:ok, []}
+        end,
+        write: fn p, ts ->
+          send(pid, {:write, p, ts})
+          :ok
+        end,
+        append: fn p, ts ->
+          send(pid, {:append, p, ts})
+          :ok
+        end
       },
       overrides
     )

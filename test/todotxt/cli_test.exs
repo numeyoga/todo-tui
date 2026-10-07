@@ -524,7 +524,10 @@ defmodule TodoTxt.CLITest do
       tasks: [],
       done_tasks: [],
       today: ~D[2026-09-21],
-      runner: fn env -> send(test_pid, {:tui_ran, env.paths.todo}) && {:ok, nil} end
+      runner: fn env ->
+        send(test_pid, {:tui_ran, env.paths.todo})
+        {:ok, nil}
+      end
     }
 
     assert {:ok, nil} = TodoTxt.CLI.run(["--tui"], env)

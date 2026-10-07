@@ -55,15 +55,30 @@ defmodule TodoTxt.Tui do
     default_w = Map.get(env, :width, 80)
     default_h = Map.get(env, :height, 24)
 
+    terminal_size() || io_size() || {default_w, default_h}
+  end
+
+  defp terminal_size do
+    if Process.whereis(TermUI.Terminal) do
+      case TermUI.Terminal.get_terminal_size() do
+        {:ok, {rows, cols}}
+        when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 ->
+          {cols, rows}
+
+        _ ->
+          nil
+      end
+    end
+  end
+
+  defp io_size do
     case {:io.columns(), :io.rows()} do
-      {{:ok, cols}, {:ok, rows}} ->
+      {{:ok, cols}, {:ok, rows}}
+      when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 ->
         {cols, rows}
 
       _ ->
-        case Process.whereis(TermUI.Terminal) && TermUI.Terminal.get_terminal_size() do
-          {:ok, {rows, cols}} when is_integer(cols) and cols > 0 -> {cols, rows}
-          _ -> {default_w, default_h}
-        end
+        nil
     end
   end
 
@@ -98,15 +113,7 @@ defmodule TodoTxt.Tui do
   def init(opts) do
     env = Keyword.fetch!(opts, :env)
 
-    {cols, rows} =
-      case Process.whereis(TermUI.Terminal) && TermUI.Terminal.get_terminal_size() do
-        {:ok, {rows, cols}}
-        when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 ->
-          {cols, rows}
-
-        _ ->
-          detect_dimensions(env)
-      end
+    {cols, rows} = detect_dimensions(env)
 
     env = Map.merge(env, %{width: cols, height: rows})
     # Seed mtimes : sinon le 1er :tick (2 s) déclenche un reload parasite.
@@ -483,11 +490,15 @@ defmodule TodoTxt.Tui do
   end
 
   defp check_terminal_resize(s) do
-    {cols, rows} = detect_dimensions(s)
+    if Process.whereis(TermUI.Terminal) do
+      {cols, rows} = detect_dimensions(s)
 
-    if cols != s.width or rows != s.height do
-      clear_screen_and_buffers()
-      %{s | width: cols, height: rows}
+      if cols != s.width or rows != s.height do
+        clear_screen_and_buffers()
+        %{s | width: cols, height: rows}
+      else
+        s
+      end
     else
       s
     end

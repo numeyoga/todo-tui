@@ -39,8 +39,14 @@ defmodule TodoTxt.TuiScenariosTest do
     Map.merge(
       %{
         fake_io()
-        | write: fn p, ts -> send(pid, {:write, p, ts}) && :ok end,
-          append: fn p, ts -> send(pid, {:append, p, ts}) && :ok end
+        | write: fn p, ts ->
+            send(pid, {:write, p, ts})
+            :ok
+          end,
+          append: fn p, ts ->
+            send(pid, {:append, p, ts})
+            :ok
+          end
       },
       overrides
     )
@@ -402,8 +408,13 @@ defmodule TodoTxt.TuiScenariosTest do
     io =
       recording_io(self(), %{
         read: fn
-          "t" -> send(test_pid, :read_todo) && {:ok, [t("ouverte", 1), reopened_in_todo]}
-          "d" -> send(test_pid, :read_done) && {:ok, [d1]}
+          "t" ->
+            send(test_pid, :read_todo)
+            {:ok, [t("ouverte", 1), reopened_in_todo]}
+
+          "d" ->
+            send(test_pid, :read_done)
+            {:ok, [d1]}
         end
       })
 
@@ -604,7 +615,10 @@ defmodule TodoTxt.TuiScenariosTest do
     {:ok, files} = Agent.start_link(fn -> %{"t" => [open, d1, d2], "d" => [old]} end)
 
     io = %{
-      read: fn p -> send(test_pid, {:read, p}) && {:ok, Agent.get(files, & &1[p])} end,
+      read: fn p ->
+        send(test_pid, {:read, p})
+        {:ok, Agent.get(files, & &1[p])}
+      end,
       write: fn p, ts ->
         send(test_pid, {:write, p, ts})
         Agent.update(files, &Map.put(&1, p, ts))
@@ -669,7 +683,10 @@ defmodule TodoTxt.TuiScenariosTest do
     files = Agent.start_link(fn -> %{"t" => [t("a", 1), t("b", 2)], "d" => []} end) |> elem(1)
 
     io = %{
-      read: fn p -> send(test_pid, {:read, p}) && {:ok, Agent.get(files, & &1[p])} end,
+      read: fn p ->
+        send(test_pid, {:read, p})
+        {:ok, Agent.get(files, & &1[p])}
+      end,
       write: fn _, _ -> :ok end,
       append: fn _, _ -> :ok end,
       stat: fn p -> {:ok, %{mtime: Agent.get(mtimes, & &1[p])}} end
@@ -764,8 +781,14 @@ defmodule TodoTxt.TuiScenariosTest do
     io = %{
       fake_io()
       | append: fn _, _ -> {:error, "disk full"} end,
-        write: fn p, ts -> send(test_pid, {:write, p, ts}) && :ok end,
-        read: fn _ -> send(test_pid, :read) && {:ok, []} end
+        write: fn p, ts ->
+          send(test_pid, {:write, p, ts})
+          :ok
+        end,
+        read: fn _ ->
+          send(test_pid, :read)
+          {:ok, []}
+        end
     }
 
     s = state([t("a", 1)], io: io)
@@ -808,7 +831,15 @@ defmodule TodoTxt.TuiScenariosTest do
     # Après une réouverture en vue :done dont le reload échoue : les writes
     # ont eu lieu, le miroir done_tasks est mis à jour, le status signale l'erreur
     test_pid = self()
-    io2 = %{io | append: fn p, _ -> send(test_pid, {:append, p}) && :ok end}
+
+    io2 = %{
+      io
+      | append: fn p, _ ->
+          send(test_pid, {:append, p})
+          :ok
+        end
+    }
+
     s = state([], io: io2, view: :done, done_tasks: [t("x 2026-09-20 fini", 1)])
     {s2, []} = Tui.update(:toggle_done, s)
     assert_received {:append, "t"}

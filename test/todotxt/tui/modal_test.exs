@@ -3,7 +3,7 @@ defmodule TodoTxt.Tui.ModalTest do
   alias TodoTxt.Parser
   alias TodoTxt.Tui.{Modal, State}
 
-  defp st(tasks, opts \\ []) do
+  defp st(tasks, opts) do
     State.new(%{
       paths: %{todo: "t", done: "d", report: "r"},
       tasks: tasks,

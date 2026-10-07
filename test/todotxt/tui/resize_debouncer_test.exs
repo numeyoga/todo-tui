@@ -51,8 +51,6 @@ defmodule TodoTxt.Tui.ResizeDebouncerTest do
   end
 
   test "terminates cleanly when monitored process dies" do
-    parent = self()
-
     task =
       Task.async(fn ->
         receive do
