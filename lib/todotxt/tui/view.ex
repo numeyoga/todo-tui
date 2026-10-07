@@ -7,7 +7,7 @@ defmodule TodoTxt.Tui.View do
   alias TermUI.Renderer.Style
   alias TermUI.Widget.PickList
   alias TermUI.Widgets.{AlertDialog, TextInput}
-  alias TodoTxt.Parser
+  alias TodoTxt.{Dependencies, Parser, Task, TimeTracker}
   alias TodoTxt.Tui.State
 
   @sel Style.new(bg: :black, attrs: [:reverse])
@@ -414,10 +414,38 @@ defmodule TodoTxt.Tui.View do
                   _ -> Style.new(fg: :bright_black)
                 end
 
-              {label, v, tag_style}
+              display_val =
+                case k do
+                  "min" ->
+                    "#{v} (#{TimeTracker.format_minutes(v)})"
+
+                  _ ->
+                    v
+                end
+
+              {label, display_val, tag_style}
             end)
 
-          all_fields = fields ++ custom_fields
+          dep_fields =
+            case Dependencies.blocking_tasks(t, s.tasks ++ s.done_tasks) do
+              [] ->
+                if Dependencies.parse_deps(t) != [] do
+                  [{"Statut dep", "Toutes satisfaites", Style.new(fg: :green)}]
+                else
+                  []
+                end
+
+              blocking ->
+                desc =
+                  Enum.map_join(blocking, ", ", fn
+                    %Task{} = b -> "##{b.line}"
+                    id when is_binary(id) -> "##{id}"
+                  end)
+
+                [{"Bloqué par", desc, Style.new(fg: :red, attrs: [:bold])}]
+            end
+
+          all_fields = fields ++ custom_fields ++ dep_fields
 
           field_nodes =
             Enum.flat_map(all_fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)

@@ -230,10 +230,12 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(all_text, &String.contains?(&1, "notes.txt"))
     assert Enum.any?(all_text, &String.contains?(&1, "Temps min:"))
     assert Enum.any?(all_text, &String.contains?(&1, "45"))
+    assert Enum.any?(all_text, &String.contains?(&1, "45m"))
     assert Enum.any?(all_text, &String.contains?(&1, "Compteur:"))
     assert Enum.any?(all_text, &String.contains?(&1, "3"))
     assert Enum.any?(all_text, &String.contains?(&1, "Dépendance:"))
     assert Enum.any?(all_text, &String.contains?(&1, "10"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Bloqué par:"))
     assert Enum.any?(all_text, &String.contains?(&1, "Assignee:"))
     assert Enum.any?(all_text, &String.contains?(&1, "alice"))
   end

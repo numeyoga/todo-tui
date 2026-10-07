@@ -59,6 +59,7 @@ defmodule TodoTxt.CLI do
     "report" => TodoTxt.Commands.Report,
     "edit" => TodoTxt.Commands.Edit,
     "note" => TodoTxt.Commands.Note,
+    "min" => TodoTxt.Commands.Min,
     "help" => TodoTxt.Commands.Help,
     "listaddons" => TodoTxt.Commands.ListAddons
   }
