@@ -60,6 +60,23 @@ defmodule TodoTxt.TaskTest do
     assert n.tags["due"] == "2026-10-02"
   end
 
+  test "rec: alias works identically to recur: and supports implicit 1 interval" do
+    t = Parser.parse("(A) renew +sub due:2026-09-25 rec:+1w", 1)
+    n = Task.next_recurrence(t, ~D[2026-09-21])
+    assert n.tags["due"] == "2026-09-28"
+    assert n.tags["rec"] == "+1w"
+
+    t_strict = Parser.parse("renew due:2026-09-25 rec:1w", 1)
+    n_strict = Task.next_recurrence(t_strict, ~D[2026-09-21])
+    assert n_strict.tags["due"] == "2026-10-02"
+    assert n_strict.tags["rec"] == "1w"
+
+    t_unit = Parser.parse("renew due:2026-09-25 rec:w", 1)
+    n_unit = Task.next_recurrence(t_unit, ~D[2026-09-21])
+    assert n_unit.tags["due"] == "2026-10-02"
+    assert n_unit.tags["rec"] == "w"
+  end
+
   test "recur without due: base = completion date" do
     t = Parser.parse("water plants recur:+3d", 1)
     assert Task.next_recurrence(t, ~D[2026-09-21]).tags["due"] == "2026-09-24"

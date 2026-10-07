@@ -25,11 +25,25 @@ defmodule TodoTxt.Query do
   def sort(tasks), do: Enum.sort_by(tasks, &{&1.priority || 256, &1.line})
 
   @doc """
-  Keeps tasks visible on `today`: done tasks are always shown,
-  pending tasks are hidden while their `t:` threshold date is in
-  the future.
+  Keeps tasks visible on `today`: done tasks are always shown.
+  Pending tasks are hidden while their `t:` threshold date is in
+  the future, or if tagged with `h:1` (unless `show_hidden: true` is given).
   """
-  def visible(tasks, today), do: Enum.filter(tasks, &(&1.done || threshold_reached?(&1, today)))
+  def visible(tasks, today, opts \\ []) do
+    show_hidden = Keyword.get(opts, :show_hidden, false)
+
+    Enum.filter(tasks, fn t ->
+      t.done ||
+        (threshold_reached?(t, today) and (show_hidden or not hidden?(t)))
+    end)
+  end
+
+  defp hidden?(t) do
+    case t.tags["h"] do
+      v when v in ["1", "true"] -> true
+      _ -> false
+    end
+  end
 
   defp threshold_reached?(t, today) do
     case t.tags["t"] && Date.from_iso8601(t.tags["t"]) do

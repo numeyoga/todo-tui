@@ -31,6 +31,14 @@ defmodule TodoTxt.OpsTest do
     assert recur.done == false
   end
 
+  test "complete spawns next recurrence with rec: tag" do
+    tasks = [t("pay rent +home due:2026-09-30 rec:1m", 2)]
+    assert {:ok, _tasks, recur} = Ops.complete(tasks, hd(tasks), @today)
+    assert recur.tags["due"] == "2026-10-30"
+    assert recur.tags["rec"] == "1m"
+    assert recur.done == false
+  end
+
   test "complete with malformed recur errors before mutating" do
     tasks = [t("x recur:banana", 1)]
     assert {:error, msg} = Ops.complete(tasks, hd(tasks), @today)

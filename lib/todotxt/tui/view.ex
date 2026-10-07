@@ -365,6 +365,8 @@ defmodule TodoTxt.Tui.View do
               stack(:horizontal, [text(" ", nil) | colored])
             end)
 
+          recur_val = t.tags["rec"] || t.tags["recur"]
+
           fields = [
             {"Ligne", "#{t.line}", nil},
             {"Priorité", t.priority && <<t.priority>>, t.priority && pri(s, t.priority)},
@@ -373,14 +375,52 @@ defmodule TodoTxt.Tui.View do
             {"Faite", t.completion_date && Date.to_string(t.completion_date),
              Style.new(fg: :bright_black)},
             {"Due", t.tags["due"], Style.new(fg: :yellow, attrs: [:bold])},
-            {"Seuil t:", t.tags["t"], Style.new(fg: :blue, attrs: [:bold])},
-            {"Recur", t.tags["recur"], Style.new(fg: :yellow)},
+            {"Seuil t", t.tags["t"], Style.new(fg: :blue, attrs: [:bold])},
+            {"Recur", recur_val, Style.new(fg: :yellow)},
             {"Projets", Enum.join(t.projects, " "), Style.new(fg: :cyan, attrs: [:bold])},
             {"Contextes", Enum.join(t.contexts, " "), Style.new(fg: :magenta, attrs: [:bold])}
           ]
 
+          known_tags = ["due", "t", "recur", "rec", "pri"]
+
+          custom_tags =
+            t.tags
+            |> Map.drop(known_tags)
+            |> Enum.sort_by(fn {k, _v} -> k end)
+
+          custom_fields =
+            Enum.map(custom_tags, fn {k, v} ->
+              label =
+                case k do
+                  "h" -> "Masqué h"
+                  "id" -> "ID"
+                  "dep" -> "Dépendance"
+                  "p" -> "Parent"
+                  "note" -> "Note"
+                  "min" -> "Temps min"
+                  "count" -> "Compteur"
+                  other -> String.capitalize(other)
+                end
+
+              tag_style =
+                case k do
+                  "h" -> Style.new(fg: :magenta)
+                  "id" -> Style.new(fg: :green, attrs: [:bold])
+                  "note" -> Style.new(fg: :cyan)
+                  "dep" -> Style.new(fg: :red)
+                  "p" -> Style.new(fg: :red)
+                  "count" -> Style.new(fg: :yellow)
+                  "min" -> Style.new(fg: :blue)
+                  _ -> Style.new(fg: :bright_black)
+                end
+
+              {label, v, tag_style}
+            end)
+
+          all_fields = fields ++ custom_fields
+
           field_nodes =
-            Enum.flat_map(fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)
+            Enum.flat_map(all_fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)
 
           header_nodes ++ [text("", nil) | field_nodes]
       end
@@ -1160,6 +1200,7 @@ defmodule TodoTxt.Tui.View do
     is_done = s.view == :done or (selected != nil and selected.done)
     x_label = if is_done, do: "x: Reprendre", else: "x: Terminer"
     m_label = "m: Déplacer"
+    h_label = "H: h:1"
 
     if is_integer(s.width) and s.width < 110 do
       [
@@ -1170,6 +1211,7 @@ defmodule TodoTxt.Tui.View do
         "p:Priorité",
         String.replace(m_label, " ", ""),
         "L:Scope",
+        "H:h:1",
         "Tab/h:Menu",
         "/:Filtrer",
         "E:Éditeur",
@@ -1186,6 +1228,7 @@ defmodule TodoTxt.Tui.View do
         "p: Priorité",
         m_label,
         "L: Scope",
+        h_label,
         "Tab/h: Menu",
         "/: Filtrer",
         "E: Éditeur",

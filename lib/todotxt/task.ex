@@ -72,8 +72,11 @@ defmodule TodoTxt.Task do
   `recur:` tag.
   """
   @spec next_recurrence(t(), Date.t()) :: t() | nil
-  def next_recurrence(%__MODULE__{tags: %{"recur" => r}} = t, today) do
-    with {:ok, strict, n, unit} <- parse_recur(r),
+  def next_recurrence(%__MODULE__{} = t, today) do
+    recur_spec = t.tags["rec"] || t.tags["recur"]
+
+    with r when is_binary(r) <- recur_spec,
+         {:ok, strict, n, unit} <- parse_recur(r),
          base when not is_nil(base) <- recur_base(t, strict, today) do
       new_due = shift(base, n, unit)
 
@@ -93,16 +96,13 @@ defmodule TodoTxt.Task do
     end
   end
 
-  def next_recurrence(_, _), do: nil
-
   defp parse_recur(r) when is_binary(r) do
-    case Regex.run(~r/^(\+?)(\d+)([dwmy])$/, r) do
+    case Regex.run(~r/^(\+?)(\d*)([dwmy])$/, r) do
+      [_, plus, "", u] -> {:ok, plus == "", 1, u}
       [_, plus, n, u] -> {:ok, plus == "", String.to_integer(n), u}
       _ -> :error
     end
   end
-
-  defp parse_recur(_), do: :error
 
   defp recur_base(t, strict, today) do
     if strict do

@@ -62,6 +62,17 @@ defmodule TodoTxt.Tui.DecideTest do
     assert status3 == "scope: global (XDG)"
   end
 
+  test "toggle_hidden flips show_hidden boolean and emits status" do
+    s = state([t("a", 1)], show_hidden: false)
+    assert {s2, [{:status, status}]} = Tui.decide(:toggle_hidden, s)
+    assert s2.show_hidden == true
+    assert status == "tâches cachées (h:1) : affichées"
+
+    assert {s3, [{:status, status3}]} = Tui.decide(:toggle_hidden, s2)
+    assert s3.show_hidden == false
+    assert status3 == "tâches cachées (h:1) : masquées"
+  end
+
   test "sidebar focus disables task mutation shortcuts" do
     s = state([t("a", 1)], focus: :sidebar)
     assert {^s, []} = Tui.decide(:toggle_done, s)

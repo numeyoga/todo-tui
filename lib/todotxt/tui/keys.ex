@@ -28,6 +28,7 @@ defmodule TodoTxt.Tui.Keys do
     "m" => :move,
     "R" => {:open_modal, :archive},
     "L" => :toggle_scope,
+    "H" => :toggle_hidden,
     "/" => {:open_modal, :filter},
     "E" => :edit_external,
     "r" => :reload,
@@ -53,7 +54,7 @@ defmodule TodoTxt.Tui.Keys do
   end
 
   defp dispatch(code, ["shift"], :normal, _orig)
-       when code in ["A", "P", "R", "L", "E", "?"] do
+       when code in ["A", "P", "R", "L", "H", "E", "?"] do
     Map.get(@normal_chars, code, :ignore)
   end
 

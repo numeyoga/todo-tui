@@ -25,6 +25,15 @@ defmodule TodoTxt.QueryTest do
     assert Enum.map(Query.visible(ts, ~D[2026-09-21]), & &1.line) == [2, 3, 4]
   end
 
+  test "visible hides pending tasks tagged with h:1 unless show_hidden is true" do
+    ts = Parser.parse_all("visible\nhidden h:1\nx done h:1")
+    # By default, hidden pending task is excluded; done tasks are kept
+    assert Enum.map(Query.visible(ts, ~D[2026-09-21]), & &1.line) == [1, 3]
+
+    # With show_hidden: true, hidden pending tasks are shown
+    assert Enum.map(Query.visible(ts, ~D[2026-09-21], show_hidden: true), & &1.line) == [1, 2, 3]
+  end
+
   test "due_date parses due: tag, nil when absent or invalid" do
     [a, b, c] = Parser.parse_all("a due:2026-09-22\nb due:bogus\nc")
     assert Query.due_date(a) == ~D[2026-09-22]

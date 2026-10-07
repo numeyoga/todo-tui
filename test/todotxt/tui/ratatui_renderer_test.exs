@@ -49,6 +49,40 @@ defmodule TodoTxt.Tui.RatatuiRendererTest do
     assert Enum.all?(rendered_lines, &String.starts_with?(&1, "│"))
   end
 
+  test "renders custom tags (id, note, min, count) in ratatui detail pane" do
+    tasks = [
+      %Task{
+        line: 1,
+        raw: "Review doc id:101 note:spec.md min:30 count:2",
+        description: "Review doc",
+        tags: %{"id" => "101", "note" => "spec.md", "min" => "30", "count" => "2"}
+      }
+    ]
+
+    state = State.new(%{tasks: tasks, width: 80, height: 24, plain: false, today: ~D[2026-10-07]})
+    frame = %{width: 80, height: 24}
+
+    widgets = RatatuiRenderer.render(state, frame)
+
+    detail_widget =
+      Enum.find_value(widgets, fn
+        {w, %Rect{x: 56, width: 24}} -> w
+        _ -> nil
+      end)
+
+    assert detail_widget != nil
+
+    rendered_lines =
+      Enum.map(detail_widget.text, fn line ->
+        Enum.map_join(line.spans, "", & &1.content)
+      end)
+
+    assert Enum.any?(rendered_lines, &String.contains?(&1, "ID: 101"))
+    assert Enum.any?(rendered_lines, &String.contains?(&1, "Note: spec.md"))
+    assert Enum.any?(rendered_lines, &String.contains?(&1, "Temps min: 30"))
+    assert Enum.any?(rendered_lines, &String.contains?(&1, "Compteur: 2"))
+  end
+
   test "renders detail pane with placeholder when no task is selected" do
     state = State.new(%{tasks: [], width: 80, height: 24, plain: false, today: ~D[2026-10-07]})
     frame = %{width: 80, height: 24}

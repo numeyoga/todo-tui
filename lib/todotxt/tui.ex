@@ -315,6 +315,13 @@ defmodule TodoTxt.Tui do
     {s2, [:reload, {:status, "scope: #{label}"}]}
   end
 
+  def decide(:toggle_hidden, s) do
+    new_hidden = not Map.get(s, :show_hidden, false)
+    s2 = %{s | show_hidden: new_hidden, list_idx: 0}
+    label = if new_hidden, do: "affichées", else: "masquées"
+    {s2, [{:status, "tâches cachées (h:1) : #{label}"}]}
+  end
+
   # :tick (2 s, Command.interval en init) : watch externe sur les mtimes.
   # Aucun changement → no-op (même struct). Changement → reload, qui
   # rafraîchit les mtimes et clampe la sélection.

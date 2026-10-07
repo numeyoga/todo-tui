@@ -38,7 +38,7 @@ defmodule TodoTxt.Ops do
   @spec complete([Task.t()], Task.t(), Date.t()) ::
           {:ok, [Task.t()], Task.t() | nil} | {:error, String.t()}
   def complete(tasks, t, today) do
-    case t.tags["recur"] do
+    case t.tags["rec"] || t.tags["recur"] do
       nil ->
         finish_complete(tasks, t, today)
 

@@ -24,7 +24,8 @@ defmodule TodoTxt.Tui.State do
             plain: false,
             io: nil,
             opts: %{},
-            local: false
+            local: false,
+            show_hidden: false
 
   def new(env) do
     opts = env[:opts] || %{}
@@ -44,6 +45,7 @@ defmodule TodoTxt.Tui.State do
       mtimes: env[:mtimes] || %{},
       opts: opts,
       local: local,
+      show_hidden: env[:show_hidden] || false,
       width: width,
       height: height
     }
@@ -84,7 +86,7 @@ defmodule TodoTxt.Tui.State do
 
   defp rows_for(%{view: :todo} = s) do
     s.tasks
-    |> Query.visible(s.today)
+    |> Query.visible(s.today, show_hidden: s.show_hidden)
     |> Query.filter(s.filter_terms)
     |> Query.sort()
     |> Enum.map(&{:task, &1})

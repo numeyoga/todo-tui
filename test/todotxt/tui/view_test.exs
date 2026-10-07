@@ -207,6 +207,37 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(proj_nodes, &(&1.style.fg == :cyan and :bold in &1.style.attrs))
   end
 
+  test "detail pane renders rec: and custom tags (id, note, min, count, dep, custom)" do
+    s =
+      st(
+        [
+          t(
+            "Task id:42 rec:1w note:notes.txt min:45 count:3 dep:10 assignee:alice",
+            1
+          )
+        ],
+        list_idx: 0,
+        width: 100
+      )
+
+    all_text = texts(View.render(s))
+
+    assert Enum.any?(all_text, &String.contains?(&1, "Recur:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "1w"))
+    assert Enum.any?(all_text, &String.contains?(&1, "ID:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "42"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Note:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "notes.txt"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Temps min:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "45"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Compteur:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "3"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Dépendance:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "10"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Assignee:"))
+    assert Enum.any?(all_text, &String.contains?(&1, "alice"))
+  end
+
   test "statusline renders scope badge [LOCAL] or [GLOBAL]" do
     s_local = st([t("a", 1)], local: true)
     assert Enum.any?(texts(View.render(s_local)), &String.contains?(&1, "[LOCAL]"))
