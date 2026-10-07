@@ -25,27 +25,21 @@ defmodule TodoTxt.Dependencies do
   @doc "Finds all blocking tasks or dependency IDs that are not marked done."
   def blocking_tasks(%Task{} = t, all_tasks) when is_list(all_tasks) do
     dep_ids = parse_deps(t)
+    id_map = build_task_map(all_tasks)
 
-    if dep_ids == [] do
-      []
-    else
-      id_map = build_task_map(all_tasks)
+    dep_ids
+    |> Enum.filter(&dep_uncompleted?(&1, id_map))
+    |> Enum.map(&resolve_dep(&1, id_map))
+  end
 
-      dep_ids
-      |> Enum.filter(fn dep_id ->
-        case Map.get(id_map, dep_id) do
-          nil -> true
-          dep_task -> not dep_task.done
-        end
-      end)
-      |> Enum.map(fn dep_id ->
-        case Map.get(id_map, dep_id) do
-          nil -> dep_id
-          dep_task -> dep_task
-        end
-      end)
+  defp dep_uncompleted?(dep_id, id_map) do
+    case Map.get(id_map, dep_id) do
+      nil -> true
+      dep_task -> not dep_task.done
     end
   end
+
+  defp resolve_dep(dep_id, id_map), do: Map.get(id_map, dep_id, dep_id)
 
   @doc "Returns true if the task has uncompleted dependencies."
   def blocked?(%Task{} = t, all_tasks) do

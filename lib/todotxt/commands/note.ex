@@ -42,21 +42,18 @@ defmodule TodoTxt.Commands.Note do
     end
   end
 
-  def run([n | _], %{tasks: tasks, paths: paths, opts: opts} = ctx) do
-    if Map.get(opts, :edit, false) do
-      run(["edit", n], ctx)
-    else
-      with {:ok, t} <- Helpers.fetch(tasks, n) do
-        case Notes.read(paths.todo, t) do
-          {:ok, content} ->
-            {:ok, String.trim_trailing(content)}
+  def run([n | _], %{opts: %{edit: true}} = ctx), do: run(["edit", n], ctx)
 
-          _ ->
-            run(["edit", n], ctx)
-        end
-      end
-    end
+  def run([n | _], %{tasks: tasks, paths: paths} = ctx) do
+    with {:ok, t} <- Helpers.fetch(tasks, n), do: read_or_edit_note(paths.todo, t, n, ctx)
   end
 
   def run(_, _), do: {:usage, "todo note [show|edit] ITEM#"}
+
+  defp read_or_edit_note(todo_path, t, n, ctx) do
+    case Notes.read(todo_path, t) do
+      {:ok, content} -> {:ok, String.trim_trailing(content)}
+      _ -> run(["edit", n], ctx)
+    end
+  end
 end

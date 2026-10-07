@@ -149,6 +149,14 @@ defmodule TodoTxt.Tui.View do
   # %{type: :overlay} plain map and PickList.render/2 a %RenderNode{cells:}
   # with absolute screen coordinates — both are valid stack children for
   # TermUI.Runtime.NodeRenderer (constrained child rendered into the body
+  defp body(%{mode: :input, modal: %{action: :help} = m} = s) do
+    render_help_modal(s, m)
+  end
+
+  defp body(%{mode: :input, modal: %{action: a} = m} = s) when a in [:del, :archive] do
+    render_confirm_modal(s, m)
+  end
+
   defp body(%{mode: :input, modal: %{widget_mod: AlertDialog, widget: w}} = s) do
     AlertDialog.render(w, %{width: s.width, height: s.height})
   end
@@ -356,105 +364,8 @@ defmodule TodoTxt.Tui.View do
   defp detail_content(s, content_w, avail_h) do
     nodes =
       case State.selected_task(s) do
-        nil ->
-          [text("  —", dim(s))]
-
-        t ->
-          raw_lines = wrap_text(t.raw, content_w)
-
-          header_nodes =
-            Enum.map(raw_lines, fn line ->
-              words = String.split(line, " ", trim: false)
-              colored = build_syntax_nodes(words, s, Style.new(attrs: [:bold]))
-              stack(:horizontal, [text(" ", nil) | colored])
-            end)
-
-          recur_val = t.tags["rec"] || t.tags["recur"]
-
-          fields = [
-            {"Ligne", "#{t.line}", nil},
-            {"Priorité", t.priority && <<t.priority>>, t.priority && pri(s, t.priority)},
-            {"Créée", t.creation_date && Date.to_string(t.creation_date),
-             Style.new(fg: :bright_black)},
-            {"Faite", t.completion_date && Date.to_string(t.completion_date),
-             Style.new(fg: :bright_black)},
-            {"Due", t.tags["due"], Style.new(fg: :yellow, attrs: [:bold])},
-            {"Seuil t", t.tags["t"], Style.new(fg: :blue, attrs: [:bold])},
-            {"Recur", recur_val, Style.new(fg: :yellow)},
-            {"Projets", Enum.join(t.projects, " "), Style.new(fg: :cyan, attrs: [:bold])},
-            {"Contextes", Enum.join(t.contexts, " "), Style.new(fg: :magenta, attrs: [:bold])}
-          ]
-
-          known_tags = ["due", "t", "recur", "rec", "pri"]
-
-          custom_tags =
-            t.tags
-            |> Map.drop(known_tags)
-            |> Enum.sort_by(fn {k, _v} -> k end)
-
-          custom_fields =
-            Enum.map(custom_tags, fn {k, v} ->
-              label =
-                case k do
-                  "h" -> "Masqué h"
-                  "id" -> "ID"
-                  "dep" -> "Dépendance"
-                  "p" -> "Parent"
-                  "note" -> "Note"
-                  "min" -> "Temps min"
-                  "count" -> "Compteur"
-                  other -> String.capitalize(other)
-                end
-
-              tag_style =
-                case k do
-                  "h" -> Style.new(fg: :magenta)
-                  "id" -> Style.new(fg: :green, attrs: [:bold])
-                  "note" -> Style.new(fg: :cyan)
-                  "dep" -> Style.new(fg: :red)
-                  "p" -> Style.new(fg: :red)
-                  "count" -> Style.new(fg: :yellow)
-                  "min" -> Style.new(fg: :blue)
-                  _ -> Style.new(fg: :bright_black)
-                end
-
-              display_val =
-                case k do
-                  "min" ->
-                    "#{v} (#{TimeTracker.format_minutes(v)})"
-
-                  _ ->
-                    v
-                end
-
-              {label, display_val, tag_style}
-            end)
-
-          dep_fields =
-            case Dependencies.blocking_tasks(t, s.tasks ++ s.done_tasks) do
-              [] ->
-                if Dependencies.parse_deps(t) != [] do
-                  [{"Statut dep", "Toutes satisfaites", Style.new(fg: :green)}]
-                else
-                  []
-                end
-
-              blocking ->
-                desc =
-                  Enum.map_join(blocking, ", ", fn
-                    %Task{} = b -> "##{b.line}"
-                    id when is_binary(id) -> "##{id}"
-                  end)
-
-                [{"Bloqué par", desc, Style.new(fg: :red, attrs: [:bold])}]
-            end
-
-          all_fields = fields ++ custom_fields ++ dep_fields
-
-          field_nodes =
-            Enum.flat_map(all_fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)
-
-          header_nodes ++ [text("", nil) | field_nodes]
+        nil -> [text("  —", dim(s))]
+        t -> build_task_detail_nodes(t, s, content_w)
       end
 
     padding_count = max(0, avail_h - length(nodes))
@@ -500,6 +411,101 @@ defmodule TodoTxt.Tui.View do
           end)
 
         [first_node | rest_nodes]
+    end
+  end
+
+  defp build_task_detail_nodes(t, s, content_w) do
+    header_nodes = build_detail_header(t, s, content_w)
+
+    fields =
+      base_detail_fields(t, s) ++
+        custom_detail_fields(t.tags) ++
+        dep_detail_fields(t, s.tasks ++ s.done_tasks)
+
+    field_nodes =
+      Enum.flat_map(fields, fn {k, v, st} -> render_field(k, v, st, content_w, s) end)
+
+    header_nodes ++ [text("", nil) | field_nodes]
+  end
+
+  defp build_detail_header(t, s, content_w) do
+    raw_lines = wrap_text(t.raw, content_w)
+
+    Enum.map(raw_lines, fn line ->
+      words = String.split(line, " ", trim: false)
+      colored = build_syntax_nodes(words, s, Style.new(attrs: [:bold]))
+      stack(:horizontal, [text(" ", nil) | colored])
+    end)
+  end
+
+  defp base_detail_fields(t, s) do
+    recur_val = t.tags["rec"] || t.tags["recur"]
+
+    [
+      {"Ligne", "#{t.line}", nil},
+      {"Priorité", t.priority && <<t.priority>>, t.priority && pri(s, t.priority)},
+      {"Créée", t.creation_date && Date.to_string(t.creation_date), Style.new(fg: :bright_black)},
+      {"Faite", t.completion_date && Date.to_string(t.completion_date),
+       Style.new(fg: :bright_black)},
+      {"Due", t.tags["due"], Style.new(fg: :yellow, attrs: [:bold])},
+      {"Seuil t", t.tags["t"], Style.new(fg: :blue, attrs: [:bold])},
+      {"Recur", recur_val, Style.new(fg: :yellow)},
+      {"Projets", Enum.join(t.projects, " "), Style.new(fg: :cyan, attrs: [:bold])},
+      {"Contextes", Enum.join(t.contexts, " "), Style.new(fg: :magenta, attrs: [:bold])}
+    ]
+  end
+
+  defp custom_detail_fields(tags) do
+    known_tags = ["due", "t", "recur", "rec", "pri"]
+
+    tags
+    |> Map.drop(known_tags)
+    |> Enum.sort_by(fn {k, _v} -> k end)
+    |> Enum.map(&format_custom_field/1)
+  end
+
+  defp format_custom_field({k, v}) do
+    {custom_tag_label(k), custom_tag_value(k, v), custom_tag_style(k)}
+  end
+
+  defp custom_tag_label("h"), do: "Masqué h"
+  defp custom_tag_label("id"), do: "ID"
+  defp custom_tag_label("dep"), do: "Dépendance"
+  defp custom_tag_label("p"), do: "Parent"
+  defp custom_tag_label("note"), do: "Note"
+  defp custom_tag_label("min"), do: "Temps min"
+  defp custom_tag_label("count"), do: "Compteur"
+  defp custom_tag_label(other), do: String.capitalize(other)
+
+  defp custom_tag_value("min", v), do: "#{v} (#{TimeTracker.format_minutes(v)})"
+  defp custom_tag_value(_k, v), do: v
+
+  defp custom_tag_style("h"), do: Style.new(fg: :magenta)
+  defp custom_tag_style("id"), do: Style.new(fg: :green, attrs: [:bold])
+  defp custom_tag_style("note"), do: Style.new(fg: :cyan)
+  defp custom_tag_style("dep"), do: Style.new(fg: :red)
+  defp custom_tag_style("p"), do: Style.new(fg: :red)
+  defp custom_tag_style("count"), do: Style.new(fg: :yellow)
+  defp custom_tag_style("min"), do: Style.new(fg: :blue)
+  defp custom_tag_style(_), do: Style.new(fg: :bright_black)
+
+  defp dep_detail_fields(t, all_tasks) do
+    case Dependencies.blocking_tasks(t, all_tasks) do
+      [] ->
+        if Dependencies.parse_deps(t) != [] do
+          [{"Statut dep", "Toutes satisfaites", Style.new(fg: :green)}]
+        else
+          []
+        end
+
+      blocking ->
+        desc =
+          Enum.map_join(blocking, ", ", fn
+            %Task{} = b -> "##{b.line}"
+            id when is_binary(id) -> "##{id}"
+          end)
+
+        [{"Bloqué par", desc, Style.new(fg: :red, attrs: [:bold])}]
     end
   end
 
@@ -872,6 +878,173 @@ defmodule TodoTxt.Tui.View do
     stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
   end
 
+  defp render_help_modal(s, _modal) do
+    modal_w = min(max(round(s.width * 0.80), 70), 92)
+    inner_w = modal_w - 6
+    border_style = accent(s)
+    title = "AIDE & RACCOURCIS [?]"
+
+    top_border =
+      "╭─ #{title} " <> String.duplicate("─", max(0, modal_w - String.length(title) - 5)) <> "╮"
+
+    bot_border = "╰" <> String.duplicate("─", modal_w - 2) <> "╯"
+
+    line_helper = fn node, raw_len ->
+      pad = max(0, inner_w - raw_len)
+
+      stack(:horizontal, [
+        text("│  ", border_style),
+        node,
+        text(String.duplicate(" ", pad), nil),
+        text("  │", border_style)
+      ])
+    end
+
+    sec_title = fn title_text, color ->
+      node = text("▸ " <> title_text, Style.new(fg: color, attrs: [:bold]))
+      line_helper.(node, String.length("▸ " <> title_text))
+    end
+
+    shortcut_line = fn key, desc ->
+      key_node = text("  " <> String.pad_trailing(key, 12), token_key_style(s))
+      desc_node = text(desc, token_desc_style(s))
+      node = stack(:horizontal, [key_node, desc_node])
+      line_helper.(node, 2 + max(String.length(key), 12) + String.length(desc))
+    end
+
+    empty_line =
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ])
+
+    modal_rows = [
+      text(top_border, border_style),
+      empty_line,
+      sec_title.("Navigation & Sélection", :green),
+      shortcut_line.("j / k", "Déplacer la sélection bas / haut (ou flèches ↑/↓)"),
+      shortcut_line.("Tab / l", "Aller à la liste des tâches (ou h pour le menu latéral)"),
+      empty_line,
+      sec_title.("Actions sur les tâches", :cyan),
+      shortcut_line.("x / Espace", "Terminer une tâche (gère count:N et récurrence recur:)"),
+      shortcut_line.("a / e", "Ajouter une nouvelle tâche / Modifier la tâche courante"),
+      shortcut_line.("A / P", "Ajouter du texte à la fin / au début de la tâche"),
+      shortcut_line.("p", "Changer la priorité (A-Z ou aucune)"),
+      shortcut_line.("t", "Éditer les tags et champs spéciaux (ex: due:2026-10-15 ou -due)"),
+      shortcut_line.("d / m", "Supprimer la tâche / Déplacer entre todo.txt et done.txt"),
+      empty_line,
+      sec_title.("Vues, Filtres & Recherche", :yellow),
+      shortcut_line.(
+        "/",
+        "Recherche / filtrage par texte, +projet ou @contexte (Esc pour effacer)"
+      ),
+      shortcut_line.(
+        "L / H",
+        "Basculer la portée (Local ↔ Global) / Afficher les masquées (h:1)"
+      ),
+      empty_line,
+      sec_title.("Notes, Outils & Système", :magenta),
+      shortcut_line.("N", "Éditer la note Markdown associée ($EDITOR)"),
+      shortcut_line.("E / R", "Ouvrir tout todo.txt ($EDITOR) / Archiver les tâches terminées"),
+      shortcut_line.("r / ^L / q", "Recharger fichiers / Redessiner écran / Quitter"),
+      empty_line,
+      line_helper.(text("[ Échap / Entrée / ? / q ]  Fermer l'aide", dim(s)), 40),
+      text(bot_border, border_style)
+    ]
+
+    box_h = length(modal_rows)
+    top_pad = max(div(max(s.height - 5, 4) - box_h, 2), 0)
+    left_pad = max(div(s.width - modal_w, 2), 1)
+
+    padded_box =
+      Enum.map(modal_rows, fn row ->
+        stack(:horizontal, [
+          text(String.duplicate(" ", left_pad), nil),
+          row
+        ])
+      end)
+
+    stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
+  end
+
+  defp render_confirm_modal(s, modal) do
+    modal_w = min(max(round(s.width * 0.52), 48), 64)
+    inner_w = modal_w - 6
+    border_style = accent(s)
+    title = if modal.action == :del, do: "SUPPRIMER", else: "ARCHIVER"
+
+    question =
+      case modal.action do
+        :del -> "Supprimer la tâche ##{modal[:line]} ?"
+        :archive -> "Archiver les tâches terminées dans done.txt ?"
+        _ -> "Confirmer cette action ?"
+      end
+
+    top_border =
+      "╭─ #{title} " <> String.duplicate("─", max(0, modal_w - String.length(title) - 5)) <> "╮"
+
+    bot_border = "╰" <> String.duplicate("─", modal_w - 2) <> "╯"
+
+    empty_line =
+      stack(:horizontal, [
+        text("│", border_style),
+        text(String.duplicate(" ", modal_w - 2), nil),
+        text("│", border_style)
+      ])
+
+    pad_q = max(0, inner_w - String.length(question))
+    left_q = div(pad_q, 2)
+    right_q = pad_q - left_q
+
+    question_row =
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(String.duplicate(" ", left_q), nil),
+        text(question, Style.new(fg: :yellow, attrs: [:bold])),
+        text(String.duplicate(" ", right_q), nil),
+        text("  │", border_style)
+      ])
+
+    hint = "[ Entrée / O ] Confirmer    [ Échap / N ] Annuler"
+    pad_h = max(0, inner_w - String.length(hint))
+    left_h = div(pad_h, 2)
+    right_h = pad_h - left_h
+
+    hint_row =
+      stack(:horizontal, [
+        text("│  ", border_style),
+        text(String.duplicate(" ", left_h), nil),
+        text(hint, dim(s)),
+        text(String.duplicate(" ", right_h), nil),
+        text("  │", border_style)
+      ])
+
+    modal_rows = [
+      text(top_border, border_style),
+      empty_line,
+      question_row,
+      empty_line,
+      hint_row,
+      empty_line,
+      text(bot_border, border_style)
+    ]
+
+    box_h = length(modal_rows)
+    top_pad = max(div(max(s.height - 5, 4) - box_h, 2), 0)
+    left_pad = max(div(s.width - modal_w, 2), 1)
+
+    padded_box =
+      Enum.map(modal_rows, fn row ->
+        stack(:horizontal, [
+          text(String.duplicate(" ", left_pad), nil),
+          row
+        ])
+      end)
+
+    stack(:vertical, List.duplicate(text("", nil), top_pad) ++ padded_box)
+  end
+
   defp render_input_modal(s, modal) do
     modal_w = min(max(round(s.width * 0.70), 56), 96)
     inner_w = modal_w - 6
@@ -889,8 +1062,8 @@ defmodule TodoTxt.Tui.View do
 
     input_row_nodes = build_input_rows(val, modal.widget, inner_input_w, border_style)
     preview_row_nodes = build_preview_rows(val, s, inner_w, border_style)
-    legend_nodes = build_legend_nodes(s, inner_w, border_style)
-    tags_badge_node = build_tags_badge(task, inner_w, modal_w, border_style)
+    legend_row_nodes = build_legend_rows(s, inner_w, border_style)
+    tags_badge_nodes = build_tags_badge_rows(task, inner_w, modal_w, border_style)
 
     modal_rows =
       [
@@ -908,8 +1081,8 @@ defmodule TodoTxt.Tui.View do
         ])
       ] ++
         input_row_nodes ++
+        legend_row_nodes ++
         [
-          stack(:horizontal, legend_nodes),
           stack(:horizontal, [
             text("│", border_style),
             text(String.duplicate(" ", modal_w - 2), nil),
@@ -923,8 +1096,8 @@ defmodule TodoTxt.Tui.View do
           ])
         ] ++
         preview_row_nodes ++
+        tags_badge_nodes ++
         [
-          tags_badge_node,
           stack(:horizontal, [
             text("│", border_style),
             text(String.duplicate(" ", modal_w - 2), nil),
@@ -988,50 +1161,149 @@ defmodule TodoTxt.Tui.View do
     end)
   end
 
-  defp build_legend_nodes(s, inner_w, border_style) do
-    [
-      text("│  ", border_style),
-      text("Syntaxe : ", dim(s)),
-      text("+projet", Style.new(fg: :cyan, attrs: [:bold])),
-      text("  ", nil),
-      text("@contexte", Style.new(fg: :magenta, attrs: [:bold])),
-      text("  ", nil),
-      text("(A)", pri(s, ?A)),
-      text("  ", nil),
-      text("due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold])),
-      text(String.duplicate(" ", max(0, inner_w - 49)), nil),
-      text("  │", border_style)
+  defp build_legend_rows(s, inner_w, border_style) do
+    tokens = [
+      {"Syntaxe :", dim(s)},
+      {"+projet", Style.new(fg: :cyan, attrs: [:bold])},
+      {"@contexte", Style.new(fg: :magenta, attrs: [:bold])},
+      {"(A)", pri(s, ?A)},
+      {"due:AAAA-MM-JJ", Style.new(fg: :yellow, attrs: [:bold])},
+      {"t:AAAA-MM-JJ", Style.new(fg: :blue, attrs: [:bold])},
+      {"rec:1w", Style.new(fg: :yellow)},
+      {"count:N", Style.new(fg: :yellow)},
+      {"min:MIN", Style.new(fg: :blue)},
+      {"id:ID", Style.new(fg: :green, attrs: [:bold])},
+      {"dep:ID", Style.new(fg: :red)},
+      {"note:NOTE", Style.new(fg: :cyan)},
+      {"h:1", Style.new(fg: :magenta)}
     ]
+
+    wrapped_lines = wrap_legend_tokens(tokens, inner_w)
+    Enum.map(wrapped_lines, &build_single_legend_row(&1, inner_w, border_style))
   end
 
-  defp build_tags_badge(task, inner_w, modal_w, border_style) do
-    tags = []
-    tags = if task.priority, do: ["Prio [#{<<task.priority>>}]" | tags], else: tags
-    tags = if task.projects != [], do: [Enum.join(task.projects, " ") | tags], else: tags
-    tags = if task.contexts != [], do: [Enum.join(task.contexts, " ") | tags], else: tags
+  defp build_single_legend_row(line_tokens, inner_w, border_style) do
+    row_nodes = format_legend_token_nodes(line_tokens)
+    total_len = legend_line_length(line_tokens)
+    pad = max(0, inner_w - total_len)
 
-    tags =
-      if Map.has_key?(task.tags, "due"), do: ["Échéance: #{task.tags["due"]}" | tags], else: tags
+    stack(:horizontal, [
+      text("│  ", border_style),
+      stack(:horizontal, row_nodes),
+      text(String.duplicate(" ", pad), nil),
+      text("  │", border_style)
+    ])
+  end
 
-    summary = Enum.reverse(tags) |> Enum.join("  ·  ")
+  defp format_legend_token_nodes(line_tokens) do
+    Enum.flat_map(Enum.with_index(line_tokens), fn {{text_str, style}, idx} ->
+      sep = if idx > 0, do: [text(" ", nil)], else: []
+      sep ++ [text(text_str, style)]
+    end)
+  end
 
-    if summary != "" do
-      badge = fit_text(summary, inner_w)
+  defp legend_line_length(line_tokens) do
+    text_lens = Enum.map(line_tokens, fn {text_str, _} -> String.length(text_str) end)
+    Enum.sum(text_lens) + max(0, length(line_tokens) - 1)
+  end
 
-      stack(:horizontal, [
-        text("│  ", border_style),
-        text(badge, Style.new(fg: :green)),
-        text(String.duplicate(" ", max(0, inner_w - String.length(badge))), nil),
-        text("  │", border_style)
-      ])
+  defp wrap_legend_tokens(tokens, max_w) do
+    do_wrap_legend_tokens(tokens, max_w, 0, [], [])
+  end
+
+  defp do_wrap_legend_tokens([], _max_w, _curr_len, current_line, acc) do
+    Enum.reverse([Enum.reverse(current_line) | acc])
+  end
+
+  defp do_wrap_legend_tokens([{str, _} = token | rest], max_w, curr_len, current_line, acc) do
+    token_len = String.length(str)
+    added_len = if current_line == [], do: token_len, else: token_len + 1
+
+    if curr_len + added_len <= max_w or current_line == [] do
+      do_wrap_legend_tokens(rest, max_w, curr_len + added_len, [token | current_line], acc)
     else
-      stack(:horizontal, [
-        text("│", border_style),
-        text(String.duplicate(" ", modal_w - 2), nil),
-        text("│", border_style)
-      ])
+      do_wrap_legend_tokens(
+        [token | rest],
+        max_w,
+        0,
+        [],
+        [Enum.reverse(current_line) | acc]
+      )
     end
   end
+
+  defp build_tags_badge_rows(task, inner_w, modal_w, border_style) do
+    badges = collect_task_badges(task)
+
+    if badges == [] do
+      [
+        stack(:horizontal, [
+          text("│", border_style),
+          text(String.duplicate(" ", modal_w - 2), nil),
+          text("│", border_style)
+        ])
+      ]
+    else
+      full_text = Enum.join(badges, "  ·  ")
+      wrapped_lines = wrap_text(full_text, inner_w)
+
+      Enum.map(wrapped_lines, fn line ->
+        pad = max(0, inner_w - String.length(line))
+
+        stack(:horizontal, [
+          text("│  ", border_style),
+          text(line, Style.new(fg: :green)),
+          text(String.duplicate(" ", pad), nil),
+          text("  │", border_style)
+        ])
+      end)
+    end
+  end
+
+  defp collect_task_badges(task) do
+    header_badges(task) ++ special_tag_badges(task.tags) ++ other_tag_badges(task.tags)
+  end
+
+  defp header_badges(task) do
+    prio_str = if task.priority, do: "Prio [#{<<task.priority>>}]"
+    proj_str = if task.projects != [], do: Enum.join(task.projects, " ")
+    ctx_str = if task.contexts != [], do: Enum.join(task.contexts, " ")
+
+    []
+    |> maybe_append(prio_str, prio_str)
+    |> maybe_append(proj_str, proj_str)
+    |> maybe_append(ctx_str, ctx_str)
+  end
+
+  defp special_tag_badges(tags) do
+    recur = tags["rec"] || tags["recur"]
+
+    min_desc =
+      if Map.has_key?(tags, "min"),
+        do: "#{tags["min"]} (#{TimeTracker.format_minutes(tags["min"])})"
+
+    []
+    |> maybe_append(tags["due"], "due:#{tags["due"]}")
+    |> maybe_append(tags["t"], "t:#{tags["t"]}")
+    |> maybe_append(recur, "rec:#{recur}")
+    |> maybe_append(tags["count"], "count:#{tags["count"]}")
+    |> maybe_append(min_desc, "min:#{min_desc}")
+    |> maybe_append(tags["id"], "id:#{tags["id"]}")
+    |> maybe_append(tags["dep"], "dep:#{tags["dep"]}")
+    |> maybe_append(tags["note"], "note:#{tags["note"]}")
+    |> maybe_append(tags["h"], "h:1")
+  end
+
+  defp other_tag_badges(tags) do
+    handled = ["due", "t", "rec", "recur", "count", "min", "id", "dep", "note", "h", "pri"]
+
+    tags
+    |> Map.drop(handled)
+    |> Enum.map(fn {k, v} -> "#{k}:#{v}" end)
+  end
+
+  defp maybe_append(list, cond_val, _val) when cond_val in [nil, false], do: list
+  defp maybe_append(list, _cond_val, val), do: list ++ [val]
 
   defp wrap_input_with_cursor("", _cursor_pos, _max_w) do
     {[""], 0, 0}
@@ -1161,6 +1433,9 @@ defmodule TodoTxt.Tui.View do
 
   defp do_fix_cursor_node(node, _target_w), do: node
 
+  defp action_title(:help, _m), do: "AIDE & RACCOURCIS"
+  defp action_title(:del, m), do: "SUPPRIMER LA TÂCHE ##{m[:line]}"
+  defp action_title(:archive, _m), do: "ARCHIVER LES TÂCHES"
   defp action_title(:add, _m), do: "NOUVELLE TÂCHE"
   defp action_title(:tag, m), do: "ÉDITER LES TAGS ##{m[:line]}"
   defp action_title(:edit, m), do: "MODIFIER LA TÂCHE ##{m[:line]}"
@@ -1247,13 +1522,24 @@ defmodule TodoTxt.Tui.View do
     2 + length(shortcuts_lines(s))
   end
 
-  defp statusline(%{mode: :input, modal: %{widget_mod: TextInput, action: a}} = s)
-       when a in [:add, :edit, :append, :prepend, :tag] do
+  defp statusline(%{mode: :input, modal: %{action: a}} = s)
+       when a in [:add, :edit, :append, :prepend, :tag, :help, :del, :archive] do
     sep = text(build_separator(s), dim(s))
     action_label = action_title(a, s.modal)
     scope = if s.local, do: "[LOCAL]", else: "[GLOBAL]"
     line1 = text(" #{action_label} #{scope}", accent(s))
-    line2 = text(" [Entrée] Valider    [Échap] Annuler", dim(s))
+
+    line2 =
+      cond do
+        a == :help ->
+          text(" [Échap / Entrée / ? / q] Fermer l'aide", dim(s))
+
+        a in [:del, :archive] ->
+          text(" [Entrée / O] Confirmer    [Échap / N] Annuler", dim(s))
+
+        true ->
+          text(" [Entrée] Valider    [Échap] Annuler", dim(s))
+      end
 
     stack(:vertical, [sep, line1, line2])
   end
@@ -1283,7 +1569,7 @@ defmodule TodoTxt.Tui.View do
 
     sep = text(build_separator(s), dim(s))
     line1 = text(" #{view} #{scope}#{filters}#{status}", status_style(s, is_error))
-    shortcut_nodes = Enum.map(shortcuts_lines(s), &text(&1, dim(s)))
+    shortcut_nodes = shortcuts_lines(s)
 
     stack(:vertical, [sep, line1 | shortcut_nodes])
   end
@@ -1306,90 +1592,154 @@ defmodule TodoTxt.Tui.View do
     Enum.join(chars)
   end
 
+  # --- Design Tokens: Statusline Shortcuts ---
+  defp token_bracket_style(%{plain: true}), do: @dim_plain
+  defp token_bracket_style(_), do: Style.new(fg: :bright_black)
+
+  defp token_group_style(%{plain: true}, _group), do: @dim_plain
+  defp token_group_style(_, :task), do: Style.new(fg: :bright_cyan, attrs: [:bold])
+  defp token_group_style(_, :nav), do: Style.new(fg: :bright_green, attrs: [:bold])
+  defp token_group_style(_, :sys), do: Style.new(fg: :bright_magenta, attrs: [:bold])
+
+  defp token_key_style(%{plain: true}), do: @dim_plain
+  defp token_key_style(_), do: Style.new(fg: :bright_yellow, attrs: [:bold])
+
+  defp token_desc_style(%{plain: true}), do: @dim_plain
+  defp token_desc_style(_), do: Style.new(fg: :white)
+
+  defp token_sep_style(%{plain: true}), do: @dim_plain
+  defp token_sep_style(_), do: Style.new(fg: :bright_black)
+
   defp shortcuts_lines(s) do
-    items = if s.focus == :sidebar, do: sidebar_shortcut_items(), else: list_shortcut_items(s)
+    groups = shortcut_groups(s)
     max_w = max((s.width || 80) - 2, 20)
-    wrap_shortcut_items(items, max_w, "", [])
+    wrap_shortcut_groups(groups, max_w, s)
   end
 
-  defp sidebar_shortcut_items do
+  defp shortcut_groups(%{focus: :sidebar}) do
     [
-      "Tab/l: Liste",
-      "j/k: Naviguer",
-      "Entrée: Filtrer",
-      "/: Filtrer",
-      "^L: Nettoyer",
-      "?: Aide",
-      "q: Quitter"
+      {:nav, "Navigation",
+       [
+         {"Tab/l", "Liste"},
+         {"j/k", "Naviguer"},
+         {"Entrée", "Filtrer"},
+         {"/", "Filtrer"}
+       ]},
+      {:sys, "Système",
+       [
+         {"^L", "Nettoyer"},
+         {"?", "Aide"},
+         {"q", "Quitter"}
+       ]}
     ]
   end
 
-  defp list_shortcut_items(s) do
+  defp shortcut_groups(s) do
     selected = State.selected_task(s)
     is_done = s.view == :done or (selected != nil and selected.done)
-    x_label = if is_done, do: "x: Reprendre", else: "x: Terminer"
-    m_label = "m: Déplacer"
-    h_label = "H: h:1"
+    x_label = if is_done, do: "Reprendre", else: "Terminer"
 
-    if is_integer(s.width) and s.width < 110 do
-      [
-        "a:Ajouter",
-        "e:Modifier",
-        String.replace(x_label, " ", ""),
-        "d:Supprimer",
-        "p:Priorité",
-        String.replace(m_label, " ", ""),
-        "L:Scope",
-        "H:h:1",
-        "Tab/h:Menu",
-        "/:Filtrer",
-        "E:Éditeur",
-        "^L:Nettoyer",
-        "?:Aide",
-        "q:Quitter"
-      ]
-    else
-      base_items = [
-        "a: Ajouter",
-        "e: Modifier",
-        x_label,
-        "d: Supprimer",
-        "p: Priorité",
-        m_label,
-        "L: Scope",
-        h_label
-      ]
+    note_item = if is_integer(s.width) and s.width >= 180, do: [{"N", "Note"}], else: []
 
-      extra = if is_integer(s.width) and s.width >= 180, do: ["N: Note"], else: []
+    [
+      {:task, "Tâche",
+       [
+         {"a", "Ajouter"},
+         {"e", "Modifier"},
+         {"x", x_label},
+         {"d", "Supprimer"},
+         {"p", "Priorité"}
+       ]},
+      {:nav, "Vue",
+       [
+         {"Tab/h", "Menu"},
+         {"m", "Déplacer"},
+         {"L", "Scope"},
+         {"H", "h:1"},
+         {"/", "Filtrer"}
+       ]},
+      {:sys, "Système",
+       note_item ++
+         [
+           {"E", "Éditeur"},
+           {"^L", "Nettoyer"},
+           {"?", "Aide"},
+           {"q", "Quitter"}
+         ]}
+    ]
+  end
 
-      base_items ++
-        extra ++
-        [
-          "Tab/h: Menu",
-          "/: Filtrer",
-          "E: Éditeur",
-          "^L: Nettoyer",
-          "?: Aide",
-          "q: Quitter"
+  defp wrap_shortcut_groups(groups, max_w, s) do
+    rendered_groups = Enum.map(groups, &render_group_info(&1, s))
+    pack_groups_into_lines(rendered_groups, max_w, s)
+  end
+
+  defp render_group_info({group_id, title, items}, s) do
+    header_len = String.length(title) + 3
+
+    header_nodes = [
+      text("[", token_bracket_style(s)),
+      text(title, token_group_style(s, group_id)),
+      text("] ", token_bracket_style(s))
+    ]
+
+    item_entries =
+      Enum.map(items, fn {k, desc} ->
+        nodes = [
+          text(k, token_key_style(s)),
+          text(":", token_sep_style(s)),
+          text(desc, token_desc_style(s))
         ]
-    end
+
+        len = String.length(k) + 1 + String.length(desc)
+        {nodes, len}
+      end)
+
+    items_len =
+      item_entries
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.sum()
+      |> Kernel.+(max(0, length(item_entries) - 1))
+
+    total_len = header_len + items_len
+
+    all_nodes =
+      header_nodes ++
+        Enum.flat_map(Enum.with_index(item_entries), fn {{nodes, _len}, idx} ->
+          sep = if idx > 0, do: [text(" ", nil)], else: []
+          sep ++ nodes
+        end)
+
+    %{len: total_len, nodes: all_nodes}
   end
 
-  defp wrap_shortcut_items([], _max_w, current, acc) do
-    if current == "", do: Enum.reverse(acc), else: Enum.reverse([current | acc])
+  defp pack_groups_into_lines([], _max_w, _s), do: []
+
+  defp pack_groups_into_lines(groups, max_w, s) do
+    do_pack_groups(groups, max_w, s, 0, [], [])
   end
 
-  defp wrap_shortcut_items([item | rest], max_w, "", acc) do
-    wrap_shortcut_items(rest, max_w, " " <> item, acc)
+  defp do_pack_groups([], _max_w, _s, _curr_len, current_line, acc) do
+    Enum.reverse([finish_line(current_line) | acc])
   end
 
-  defp wrap_shortcut_items([item | rest], max_w, current, acc) do
-    candidate = current <> "  " <> item
+  defp do_pack_groups([group | rest], max_w, s, curr_len, current_line, acc) do
+    sep_len = if current_line == [], do: 1, else: 3
+    added_len = sep_len + group.len
 
-    if String.length(candidate) <= max_w do
-      wrap_shortcut_items(rest, max_w, candidate, acc)
+    if curr_len + added_len <= max_w or current_line == [] do
+      new_nodes =
+        if current_line == [] do
+          group.nodes
+        else
+          current_line ++ [text(" │ ", token_sep_style(s)) | group.nodes]
+        end
+
+      do_pack_groups(rest, max_w, s, curr_len + added_len, new_nodes, acc)
     else
-      wrap_shortcut_items(rest, max_w, " " <> item, [current | acc])
+      do_pack_groups(rest, max_w, s, 1 + group.len, group.nodes, [finish_line(current_line) | acc])
     end
   end
+
+  defp finish_line(nodes), do: stack(:horizontal, [text(" ", nil) | nodes])
 end

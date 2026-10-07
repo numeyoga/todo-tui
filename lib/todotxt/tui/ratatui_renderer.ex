@@ -81,6 +81,7 @@ defmodule TodoTxt.Tui.RatatuiRenderer do
   defp unpack_body(_), do: {%RenderNode{}, %RenderNode{}, %RenderNode{}}
 
   @doc "Converts a RenderNode into a list of ExRatatui.Text.Line structs."
+  def to_ratatui_lines(%{type: :overlay, content: content}), do: to_ratatui_lines(content)
   def to_ratatui_lines({node, _constraint}), do: to_ratatui_lines(node)
 
   def to_ratatui_lines(%RenderNode{type: :stack, direction: :vertical, children: children}) do

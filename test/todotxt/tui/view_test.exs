@@ -383,4 +383,58 @@ defmodule TodoTxt.Tui.ViewTest do
     assert Enum.any?(all_text, &String.contains?(&1, "due:YYYY-MM-DD"))
     assert Enum.any?(all_text, &String.contains?(&1, "count:N / min:N"))
   end
+
+  test "help modal renders structured popup with shortcut sections" do
+    s = st([t("task 1", 1)], width: 80, height: 26, mode: :input)
+    s = %{s | modal: Modal.open(:help, s)}
+    rendered = View.render(s)
+    all_text = texts(rendered)
+
+    assert Enum.any?(all_text, &String.contains?(&1, "AIDE & RACCOURCIS"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Navigation & Sélection"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Actions sur les tâches"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Vues, Filtres & Recherche"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Notes, Outils & Système"))
+    assert Enum.any?(all_text, &String.contains?(&1, "Fermer l'aide"))
+  end
+
+  test "input modal displays all special keywords in wrapped legend" do
+    s = st([t("task 1", 1)], width: 70, height: 24, mode: :input)
+    s = %{s | modal: Modal.open(:add, s)}
+    rendered = View.render(s)
+    all_text = texts(rendered)
+
+    assert Enum.any?(all_text, &String.contains?(&1, "Syntaxe :"))
+    assert Enum.any?(all_text, &String.contains?(&1, "+projet"))
+    assert Enum.any?(all_text, &String.contains?(&1, "@contexte"))
+    assert Enum.any?(all_text, &String.contains?(&1, "due:AAAA-MM-JJ"))
+    assert Enum.any?(all_text, &String.contains?(&1, "rec:1w"))
+    assert Enum.any?(all_text, &String.contains?(&1, "count:N"))
+    assert Enum.any?(all_text, &String.contains?(&1, "min:MIN"))
+    assert Enum.any?(all_text, &String.contains?(&1, "id:ID"))
+    assert Enum.any?(all_text, &String.contains?(&1, "dep:ID"))
+    assert Enum.any?(all_text, &String.contains?(&1, "note:NOTE"))
+    assert Enum.any?(all_text, &String.contains?(&1, "h:1"))
+  end
+
+  test "statusline renders grouped shortcuts with category tokens and colors" do
+    s = st([t("task 1", 1)], width: 120, height: 24)
+    rendered = View.render(s)
+    nodes = text_nodes(rendered)
+
+    task_badge = Enum.find(nodes, &(&1.content == "Tâche"))
+    assert task_badge != nil
+    assert task_badge.style.fg == :bright_cyan
+    assert :bold in task_badge.style.attrs
+
+    nav_badge = Enum.find(nodes, &(&1.content == "Vue"))
+    assert nav_badge != nil
+    assert nav_badge.style.fg == :bright_green
+    assert :bold in nav_badge.style.attrs
+
+    sys_badge = Enum.find(nodes, &(&1.content == "Système"))
+    assert sys_badge != nil
+    assert sys_badge.style.fg == :bright_magenta
+    assert :bold in sys_badge.style.attrs
+  end
 end

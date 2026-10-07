@@ -30,32 +30,33 @@ defmodule TodoTxt.Commands.Min do
 
   def run(_, _), do: {:usage, "todo min ITEM# [+|-]MINUTES"}
 
-  defp calculate_new_minutes(current_str, delta_str) do
-    current =
-      case current_str do
-        nil -> 0
-        s when is_binary(s) -> String.to_integer(s)
-      end
+  defp parse_minutes_str(nil), do: 0
+  defp parse_minutes_str(s) when is_binary(s), do: String.to_integer(s)
 
-    case delta_str do
-      <<"+", rest::binary>> ->
-        case Integer.parse(rest) do
-          {add, ""} -> {:ok, current + add}
-          _ -> :error
-        end
-
-      <<"-", rest::binary>> ->
-        case Integer.parse(rest) do
-          {sub, ""} -> {:ok, max(0, current - sub)}
-          _ -> :error
-        end
-
-      val ->
-        case Integer.parse(val) do
-          {set, ""} -> {:ok, max(0, set)}
-          _ -> :error
-        end
+  defp apply_minute_delta(current, <<"+", rest::binary>>) do
+    case Integer.parse(rest) do
+      {add, ""} -> {:ok, current + add}
+      _ -> :error
     end
+  end
+
+  defp apply_minute_delta(current, <<"-", rest::binary>>) do
+    case Integer.parse(rest) do
+      {sub, ""} -> {:ok, max(0, current - sub)}
+      _ -> :error
+    end
+  end
+
+  defp apply_minute_delta(_current, val) do
+    case Integer.parse(val) do
+      {set, ""} -> {:ok, max(0, set)}
+      _ -> :error
+    end
+  end
+
+  defp calculate_new_minutes(current_str, delta_str) do
+    current = parse_minutes_str(current_str)
+    apply_minute_delta(current, delta_str)
   rescue
     _ -> :error
   end

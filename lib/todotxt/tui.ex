@@ -410,6 +410,29 @@ defmodule TodoTxt.Tui do
     end
   end
 
+  def decide({:modal_event, ev}, %{modal: %{action: :help}} = s) do
+    case Keys.to_key(ev) do
+      {:key, k, _} when k in ["esc", "enter", "q", "?", " ", "space"] ->
+        decide(:modal_cancel, s)
+
+      _ ->
+        {s, []}
+    end
+  end
+
+  def decide({:modal_event, ev}, %{modal: %{action: a}} = s) when a in [:del, :archive] do
+    case Keys.to_key(ev) do
+      {:key, k, _} when k in ["esc", "n", "N"] ->
+        decide(:modal_cancel, s)
+
+      {:key, k, _} when k in ["enter", "y", "Y", "o", "O"] ->
+        decide({:dialog_result, :yes}, s)
+
+      _ ->
+        {s, []}
+    end
+  end
+
   def decide({:modal_event, ev}, %{modal: %{widget_mod: _mod} = modal} = s) do
     case Keys.to_key(ev) do
       {:key, "esc", _} ->
@@ -428,42 +451,7 @@ defmodule TodoTxt.Tui do
     s = %{s | mode: :normal, modal: nil}
     raw_text = TextInput.get_value(modal.widget) |> String.trim()
     text = expand_relative_dates(raw_text, s.today)
-
-    case {modal.action, text} do
-      {_, ""} when modal.action != :filter ->
-        {s, []}
-
-      {:add, text} ->
-        {s, [{:persist, :add, %{text: text}}, :sync]}
-
-      {:filter, text} ->
-        {%{s | filter_terms: String.split(text, ~r/\s+/, trim: true), list_idx: 0}, []}
-
-      {:edit, text} ->
-        mutate_line(s, modal.line, {:replace_text, text}, "edited")
-
-      {:append, text} ->
-        mutate_line(s, modal.line, {:append_text, text}, "appended")
-
-      {:prepend, text} ->
-        mutate_line(s, modal.line, {:prepend_text, text}, "prepended")
-
-      {:tag, text} ->
-        list = if s.view == :done, do: :done, else: :todo
-
-        case Enum.find(list_tasks(s, list), &(&1.line == modal.line)) do
-          nil ->
-            {s, []}
-
-          task ->
-            new_t = apply_tag_tokens(task, String.split(text, ~r/\s+/, trim: true))
-            new_raw = Parser.render(new_t)
-            mutate_line(s, modal.line, {:replace_text, new_raw}, "tag")
-        end
-
-      _ ->
-        {s, []}
-    end
+    submit_text_modal(s, modal.action, Map.get(modal, :line), text)
   end
 
   def decide({:select, item}, %{modal: %{action: :pri, line: line}} = s) do
@@ -491,6 +479,37 @@ defmodule TodoTxt.Tui do
 
   # Catch-all : messages inattendus (widget orphans, timers annulés) = no-op.
   def decide(_, s), do: {s, []}
+
+  defp submit_text_modal(s, a, _, "") when a != :filter, do: {s, []}
+  defp submit_text_modal(s, :add, _, text), do: {s, [{:persist, :add, %{text: text}}, :sync]}
+
+  defp submit_text_modal(s, :filter, _, text) do
+    {%{s | filter_terms: String.split(text, ~r/\s+/, trim: true), list_idx: 0}, []}
+  end
+
+  defp submit_text_modal(s, :edit, line, text),
+    do: mutate_line(s, line, {:replace_text, text}, "edited")
+
+  defp submit_text_modal(s, :append, line, text),
+    do: mutate_line(s, line, {:append_text, text}, "appended")
+
+  defp submit_text_modal(s, :prepend, line, text),
+    do: mutate_line(s, line, {:prepend_text, text}, "prepended")
+
+  defp submit_text_modal(s, :tag, line, text) do
+    list = if s.view == :done, do: :done, else: :todo
+
+    case Enum.find(list_tasks(s, list), &(&1.line == line)) do
+      nil ->
+        {s, []}
+
+      task ->
+        new_t = apply_tag_tokens(task, String.split(text, ~r/\s+/, trim: true))
+        mutate_line(s, line, {:replace_text, Parser.render(new_t)}, "tag")
+    end
+  end
+
+  defp submit_text_modal(s, _, _, _), do: {s, []}
 
   defp handle_modal_widget_event(ev, modal, s) do
     case modal.widget_mod.handle_event(normalize_key(ev), modal.widget) do
@@ -523,28 +542,41 @@ defmodule TodoTxt.Tui do
   defp apply_tag_tokens(task, []), do: task
 
   defp apply_tag_tokens(task, [token | rest]) do
-    cond do
-      String.starts_with?(token, "-") or String.starts_with?(token, "!") ->
-        key = token |> String.slice(1..-1//1) |> String.trim_trailing(":")
-        apply_tag_tokens(Task.delete_tag(task, key), rest)
+    {updated_task, remaining} = process_tag_token(task, token, rest)
+    apply_tag_tokens(updated_task, remaining)
+  end
 
-      String.contains?(token, ":") ->
-        case String.split(token, ":", parts: 2) do
-          [k, v] when k != "" and v != "" ->
-            apply_tag_tokens(Task.put_tag(task, k, v), rest)
+  defp process_tag_token(task, "-" <> key, rest) do
+    {Task.delete_tag(task, String.trim_trailing(key, ":")), rest}
+  end
 
-          _ ->
-            apply_tag_tokens(task, rest)
-        end
+  defp process_tag_token(task, "!" <> key, rest) do
+    {Task.delete_tag(task, String.trim_trailing(key, ":")), rest}
+  end
 
-      rest != [] and not String.contains?(hd(rest), ":") and
-          not (String.starts_with?(hd(rest), "-") or String.starts_with?(hd(rest), "!")) ->
-        [val | rest2] = rest
-        apply_tag_tokens(Task.put_tag(task, token, val), rest2)
-
-      true ->
-        apply_tag_tokens(task, rest)
+  defp process_tag_token(task, token, rest) do
+    if String.contains?(token, ":") do
+      case String.split(token, ":", parts: 2) do
+        [k, v] when k != "" and v != "" -> {Task.put_tag(task, k, v), rest}
+        _ -> {task, rest}
+      end
+    else
+      pair_tag_token(task, token, rest)
     end
+  end
+
+  defp pair_tag_token(task, token, [val | rest]) when not is_nil(val) do
+    if tag_token?(val) do
+      {task, [val | rest]}
+    else
+      {Task.put_tag(task, token, val), rest}
+    end
+  end
+
+  defp pair_tag_token(task, _token, rest), do: {task, rest}
+
+  defp tag_token?(val) do
+    String.contains?(val, ":") or String.starts_with?(val, "-") or String.starts_with?(val, "!")
   end
 
   @special_keys %{
